@@ -1,65 +1,122 @@
-import Image from "next/image";
+"use client";
+
+import { useMemo, useState } from "react";
+import { parseImport } from "@/lib/parse";
+import { useTasks } from "@/lib/useTasks";
+import QuickAdd from "@/components/QuickAdd";
+import ImportPanel from "@/components/ImportPanel";
+import KanbanBoard from "@/components/KanbanBoard";
+import ListView from "@/components/ListView";
+
+type View = "kanban" | "list";
 
 export default function Home() {
+  const { tasks, loaded, addTask, addMany, updateTask, removeTask, clearDone } = useTasks();
+  const [view, setView] = useState<View>("kanban");
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return tasks;
+    return tasks.filter((t) => t.title.toLowerCase().includes(q));
+  }, [tasks, query]);
+
+  const doneCount = tasks.filter((t) => t.status === "done").length;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-full bg-zinc-50 dark:bg-zinc-950">
+      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-zinc-50/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
+          <h1 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+            Task Dashboard
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+          <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+            {tasks.length} task{tasks.length === 1 ? "" : "s"}
+          </span>
+
+          <div className="ml-auto flex items-center gap-2">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              aria-label="Search tasks"
+              className="w-32 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 sm:w-44 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <ViewToggle view={view} onChange={setView} />
+          </div>
         </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl space-y-5 px-4 py-5">
+        <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <QuickAdd onAdd={addTask} />
+        </section>
+
+        <ImportPanel onImport={(text) => addMany(parseImport(text))} />
+
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs text-zinc-500">
+            {query
+              ? `${filtered.length} match${filtered.length === 1 ? "" : "es"}`
+              : "Drag cards, double-click a title to edit, click a badge to change priority."}
+          </p>
+          {doneCount > 0 && (
+            <button
+              type="button"
+              onClick={clearDone}
+              className="text-xs font-medium text-zinc-500 transition-colors hover:text-rose-600"
+            >
+              Clear {doneCount} done
+            </button>
+          )}
+        </div>
+
+        {!loaded ? (
+          <p className="py-16 text-center text-sm text-zinc-400">Loading…</p>
+        ) : tasks.length === 0 ? (
+          <EmptyState />
+        ) : view === "kanban" ? (
+          <KanbanBoard tasks={filtered} onUpdate={updateTask} onRemove={removeTask} />
+        ) : filtered.length === 0 ? (
+          <p className="py-16 text-center text-sm text-zinc-400">No tasks match “{query}”.</p>
+        ) : (
+          <ListView tasks={filtered} onUpdate={updateTask} onRemove={removeTask} />
+        )}
       </main>
+    </div>
+  );
+}
+
+function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  return (
+    <div className="flex rounded-lg border border-zinc-300 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
+      {(["kanban", "list"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          aria-pressed={view === v}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+            view === v
+              ? "bg-blue-600 text-white shadow-sm"
+              : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          }`}
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-xl border border-dashed border-zinc-300 px-6 py-16 text-center dark:border-zinc-700">
+      <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">No tasks yet</p>
+      <p className="mt-1 text-sm text-zinc-400">
+        Add one above, or paste a list / CSV to get started.
+      </p>
     </div>
   );
 }
