@@ -1,26 +1,28 @@
 @import "tailwindcss";
 
+/* Use class-based dark mode so the theme is forced on regardless of the
+   device's light/dark setting (the <html> element carries the `dark` class). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #000000;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Bold Times New Roman everywhere — !important to override Tailwind's
+   font-weight / font-family utilities. */
+* {
+  font-family: "Times New Roman", Times, serif !important;
+  font-weight: bold !important;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
