@@ -4,48 +4,21 @@ import { useCallback, useSyncExternalStore } from "react";
 import { ParsedTask } from "./parse";
 import { newId, Priority, Status, Task } from "./types";
 
-const STORAGE_KEY = "task-dashboard.tasks.v1";
-
-const SEED: Task[] = [
-  { id: "seed-1", title: "Welcome! Edit or delete this task", status: "todo", priority: "medium", createdAt: 1 },
-  { id: "seed-2", title: "Quick-add a task above, or paste a list / CSV", status: "todo", priority: "high", createdAt: 2 },
-  { id: "seed-3", title: "Drag cards between columns (or use the arrows)", status: "doing", priority: "low", createdAt: 3 },
-  { id: "seed-4", title: "Toggle between Kanban and List views", status: "done", priority: "medium", createdAt: 4 },
-];
-
-function isTask(value: unknown): value is Task {
-  if (!value || typeof value !== "object") return false;
-  const t = value as Record<string, unknown>;
-  return (
-    typeof t.id === "string" &&
-    typeof t.title === "string" &&
-    (t.status === "todo" || t.status === "doing" || t.status === "done") &&
-    (t.priority === "low" || t.priority === "medium" || t.priority === "high") &&
-    typeof t.createdAt === "number"
-  );
-}
-
-// --- Module-level store, read via useSyncExternalStore -----------------------
+// --- Module-level store backed by /api/tasks ---------------------------------
+// Keeps the same useSyncExternalStore pattern to avoid set-state-in-effect lint.
+// Data loading is triggered inside subscribe(), which only runs on the client.
 
 const EMPTY: Task[] = [];
-let store: Task[] | null = null; // null until first client read
+let store: Task[] | null = null; // null = not yet loaded
+let initialized = false;
 const listeners = new Set<() => void>();
-let seq = 0;
 
-function loadFromStorage(): Task[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === null) return SEED;
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isTask) : [];
-  } catch {
-    return [];
-  }
+function notify() {
+  listeners.forEach((l) => l());
 }
 
 function getSnapshot(): Task[] {
-  if (store === null) store = loadFromStorage();
-  return store;
+  return store ?? EMPTY;
 }
 
 function getServerSnapshot(): Task[] {
@@ -54,21 +27,23 @@ function getServerSnapshot(): Task[] {
 
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
+  if (!initialized) {
+    initialized = true;
+    fetch("/api/tasks")
+      .then((r) => r.json())
+      .then((tasks: unknown) => {
+        store = Array.isArray(tasks) ? (tasks as Task[]) : [];
+        notify();
+      })
+      .catch(() => {
+        store = [];
+        notify();
+      });
+  }
   return () => listeners.delete(cb);
 }
 
-function setStore(updater: (prev: Task[]) => Task[]): void {
-  const next = updater(getSnapshot());
-  store = next;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // storage full or unavailable — keep the in-memory value
-  }
-  listeners.forEach((l) => l());
-}
-
-// Monotonic timestamp so newly added tasks keep a stable order within a session.
+let seq = 0;
 function nextStamp(): number {
   seq += 1;
   return Date.now() * 1000 + (seq % 1000);
@@ -78,10 +53,9 @@ function nextStamp(): number {
 
 export function useTasks() {
   const tasks = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  // false during SSR / first hydration render, true once on the client.
   const loaded = useSyncExternalStore(
     () => () => {},
-    () => true,
+    () => store !== null,
     () => false
   );
 
@@ -89,10 +63,20 @@ export function useTasks() {
     (title: string, priority: Priority = "medium", status: Status = "todo") => {
       const trimmed = title.trim();
       if (!trimmed) return;
-      setStore((prev) => [
-        { id: newId(), title: trimmed, status, priority, createdAt: nextStamp() },
-        ...prev,
-      ]);
+      const task: Task = {
+        id: newId(),
+        title: trimmed,
+        status,
+        priority,
+        createdAt: nextStamp(),
+      };
+      store = [task, ...(store ?? [])];
+      notify();
+      fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(task),
+      }).catch(() => {});
     },
     []
   );
@@ -108,20 +92,48 @@ export function useTasks() {
         createdAt: nextStamp(),
       }));
     if (toAdd.length === 0) return 0;
-    setStore((prev) => [...toAdd, ...prev]);
+    store = [...toAdd, ...(store ?? [])];
+    notify();
+    Promise.all(
+      toAdd.map((task) =>
+        fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(task),
+        })
+      )
+    ).catch(() => {});
     return toAdd.length;
   }, []);
 
-  const updateTask = useCallback((id: string, patch: Partial<Omit<Task, "id">>) => {
-    setStore((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-  }, []);
+  const updateTask = useCallback(
+    (id: string, patch: Partial<Omit<Task, "id">>) => {
+      store = (store ?? []).map((t) => (t.id === id ? { ...t, ...patch } : t));
+      notify();
+      fetch(`/api/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).catch(() => {});
+    },
+    []
+  );
 
   const removeTask = useCallback((id: string) => {
-    setStore((prev) => prev.filter((t) => t.id !== id));
+    store = (store ?? []).filter((t) => t.id !== id);
+    notify();
+    fetch(`/api/tasks/${id}`, { method: "DELETE" }).catch(() => {});
   }, []);
 
   const clearDone = useCallback(() => {
-    setStore((prev) => prev.filter((t) => t.status !== "done"));
+    const toRemove = (store ?? [])
+      .filter((t) => t.status === "done")
+      .map((t) => t.id);
+    store = (store ?? []).filter((t) => t.status !== "done");
+    notify();
+    Promise.all(
+      toRemove.map((id) => fetch(`/api/tasks/${id}`, { method: "DELETE" }))
+    ).catch(() => {});
   }, []);
 
   return { tasks, loaded, addTask, addMany, updateTask, removeTask, clearDone };
