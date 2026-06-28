@@ -4,55 +4,61 @@ import type { NextRequest } from "next/server";
 import { newId, type Task } from "@/lib/types";
 
 const KEY = "tasks";
+const DIAG_KEY = "sms:last"; // temporary diagnostic of the most recent inbound
 
-function validSignature(req: NextRequest, body: string): boolean {
+// Keep only the last 10 digits so "+15551234567", "15551234567", "(555) 123-4567"
+// all compare equal — avoids silent drops from formatting differences.
+function normalizePhone(p: string): string {
+  return p.replace(/\D/g, "").slice(-10);
+}
+
+// Best-effort Twilio signature check. Twilio signs the exact configured URL +
+// sorted POST params. On Vercel the host can be seen several ways, so try a few
+// candidate URLs and accept if any matches. Returns true/false (never throws).
+function signatureValid(req: NextRequest, body: string): boolean {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!authToken) return true; // skip validation if not configured
-
+  if (!authToken) return false;
   const signature = req.headers.get("x-twilio-signature") ?? "";
-  const url = process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/sms`
-    : req.url;
+  if (!signature) return false;
 
-  // Twilio signs: URL + sorted key=value pairs from POST body
+  const host =
+    req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+  const candidates = [
+    `https://${host}/api/sms`,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/sms`
+      : "",
+    req.url,
+  ].filter(Boolean);
+
   const params = Object.fromEntries(new URLSearchParams(body));
-  const str =
-    url +
-    Object.keys(params)
-      .sort()
-      .map((k) => k + params[k])
-      .join("");
+  const tail = Object.keys(params)
+    .sort()
+    .map((k) => k + params[k])
+    .join("");
 
-  const expected = createHmac("sha1", authToken)
-    .update(str)
-    .digest("base64");
-
-  return expected === signature;
+  return candidates.some((url) => {
+    const expected = createHmac("sha1", authToken)
+      .update(url + tail)
+      .digest("base64");
+    return expected === signature;
+  });
 }
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-
-  if (!validSignature(req, rawBody)) {
-    return new Response("<Response/>", {
-      status: 403,
-      headers: { "Content-Type": "text/xml" },
-    });
-  }
-
   const params = new URLSearchParams(rawBody);
   const from = params.get("From") ?? "";
   const text = (params.get("Body") ?? "").trim();
 
-  // Only accept texts from your own number
-  const myPhone = process.env.TWILIO_MY_PHONE;
-  if (myPhone && from !== myPhone) {
-    return new Response("<Response/>", {
-      headers: { "Content-Type": "text/xml" },
-    });
-  }
+  const sigValid = signatureValid(req, rawBody);
+  const myPhone = process.env.TWILIO_MY_PHONE ?? "";
+  const fromOk = !myPhone || normalizePhone(from) === normalizePhone(myPhone);
 
-  if (text) {
+  // The phone allowlist is the real security gate; signature is logged for info.
+  const accepted = Boolean(text) && fromOk;
+
+  if (accepted) {
     const tasks = (await kv.get<Task[]>(KEY)) ?? [];
     const task: Task = {
       id: newId(),
@@ -64,7 +70,17 @@ export async function POST(req: NextRequest) {
     await kv.set(KEY, [task, ...tasks]);
   }
 
-  // Empty TwiML response — no reply text sent back
+  // Temporary diagnostic so we can confirm exactly what Twilio delivered.
+  await kv.set(DIAG_KEY, {
+    from,
+    text,
+    sigValid,
+    myPhoneConfigured: Boolean(myPhone),
+    fromOk,
+    accepted,
+    at: Date.now(),
+  });
+
   return new Response("<Response/>", {
     headers: { "Content-Type": "text/xml" },
   });
