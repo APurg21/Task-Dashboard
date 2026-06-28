@@ -1,18 +1,23 @@
-import { Redis } from "@upstash/redis";
+import Redis from "ioredis";
 
-// Vercel's Upstash / Redis integrations inject the REST credentials under
-// different env-var names depending on which integration variant was added.
-// Accept all the common ones so storage works regardless.
-const url =
-  process.env.UPSTASH_REDIS_REST_URL ??
-  process.env.KV_REST_API_URL ??
-  process.env.STORAGE_REST_API_URL ??
-  process.env.REDIS_REST_API_URL;
+// Vercel's native Redis integration injects a TCP connection string as
+// REDIS_URL (rediss://...). Reuse a single client across invocations.
+const globalForRedis = globalThis as unknown as { redis?: Redis };
 
-const token =
-  process.env.UPSTASH_REDIS_REST_TOKEN ??
-  process.env.KV_REST_API_TOKEN ??
-  process.env.STORAGE_REST_API_TOKEN ??
-  process.env.REDIS_REST_API_TOKEN;
+const client =
+  globalForRedis.redis ??
+  new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 3 });
 
-export const kv = new Redis({ url: url!, token: token! });
+if (process.env.NODE_ENV !== "production") globalForRedis.redis = client;
+else globalForRedis.redis = client;
+
+// Thin wrapper so callers can store/read JSON the same way @vercel/kv did.
+export const kv = {
+  async get<T>(key: string): Promise<T | null> {
+    const raw = await client.get(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  },
+  async set(key: string, value: unknown): Promise<void> {
+    await client.set(key, JSON.stringify(value));
+  },
+};
