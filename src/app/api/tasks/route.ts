@@ -1,9 +1,4 @@
-import { Redis } from "@upstash/redis";
-
-const kv = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+import { kv } from "@/lib/redis";
 import type { NextRequest } from "next/server";
 import { newId, type Task } from "@/lib/types";
 
