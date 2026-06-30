@@ -9,13 +9,14 @@ import ImportPanel from "@/components/ImportPanel";
 import CapturePanel from "@/components/CapturePanel";
 import KanbanBoard from "@/components/KanbanBoard";
 import ListView from "@/components/ListView";
+import ProjectsView from "@/components/ProjectsView";
 import MetricCards from "@/components/MetricCards";
 import Sidebar, { type Section } from "@/components/Sidebar";
 
-type View = "kanban" | "list";
+type View = "kanban" | "list" | "projects";
 
 export default function Home() {
-  const { tasks, loaded, addTask, addMany, updateTask, removeTask, clearDone } = useTasks();
+  const { tasks, loaded, addTask, addMany, updateTask, removeTask, clearDone, reload } = useTasks();
   const [view, setView] = useState<View>("kanban");
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<Section>("all");
@@ -118,7 +119,7 @@ export default function Home() {
             />
           </section>
 
-          <CapturePanel projects={activeProjects} />
+          <CapturePanel projects={activeProjects} onPlanned={reload} />
 
           <ImportPanel onImport={(text) => addMany(parseImport(text))} />
 
@@ -143,6 +144,8 @@ export default function Home() {
             <p className="py-16 text-center text-sm text-zinc-400">Loading…</p>
           ) : sectionTasks.length === 0 ? (
             <EmptyState />
+          ) : view === "projects" ? (
+            <ProjectsView tasks={filtered} onUpdate={updateTask} onRemove={removeTask} />
           ) : view === "kanban" ? (
             <KanbanBoard tasks={filtered} onUpdate={updateTask} onRemove={removeTask} />
           ) : filtered.length === 0 ? (
@@ -159,7 +162,7 @@ export default function Home() {
 function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
   return (
     <div className="flex rounded-lg border border-zinc-700 bg-zinc-900 p-0.5">
-      {(["kanban", "list"] as const).map((v) => (
+      {(["kanban", "list", "projects"] as const).map((v) => (
         <button
           key={v}
           type="button"

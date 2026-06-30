@@ -26,6 +26,10 @@ export interface Task {
   context?: LifeContext;
   noteType?: NoteType;
   source?: TaskSource;
+  // Set on tasks generated from a project plan, so the board can group them
+  // under their project and milestone.
+  project?: string;
+  milestone?: string;
 }
 
 export const STATUSES: { id: Status; label: string; accent: string }[] = [

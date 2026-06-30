@@ -132,6 +132,17 @@ export function useTasks() {
     fetch(`/api/tasks/${id}`, { method: "DELETE" }).catch(() => {});
   }, []);
 
+  // Re-pull from the server — used after the planner adds tasks server-side.
+  const reload = useCallback(() => {
+    fetch("/api/tasks")
+      .then((r) => r.json())
+      .then((t: unknown) => {
+        store = Array.isArray(t) ? (t as Task[]) : [];
+        notify();
+      })
+      .catch(() => {});
+  }, []);
+
   const clearDone = useCallback(() => {
     const toRemove = (store ?? [])
       .filter((t) => t.status === "done")
@@ -143,5 +154,5 @@ export function useTasks() {
     ).catch(() => {});
   }, []);
 
-  return { tasks, loaded, addTask, addMany, updateTask, removeTask, clearDone };
+  return { tasks, loaded, addTask, addMany, updateTask, removeTask, clearDone, reload };
 }

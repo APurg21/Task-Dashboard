@@ -5,6 +5,7 @@ import { classifyText, MissingApiKeyError } from "@/lib/classify";
 import { enqueuePendingNote } from "@/lib/obsidian";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { NOTE_TYPE_LABELS } from "@/lib/notes";
+import { planProject, planToTasks, planToNote } from "@/lib/planner";
 
 // Telegram webhook. You message your bot → this classifies the text, drops a
 // prioritized task on the dashboard (shared Redis), queues the note for Obsidian
@@ -57,6 +58,38 @@ export async function POST(req: NextRequest) {
 
   if (!fromOk) {
     await sendTelegramMessage(chatId, "This bot is private.");
+    return ok();
+  }
+
+  // "plan: <idea>" or "/plan <idea>" → break the idea into milestones + tasks.
+  const planMatch = text.match(/^(?:\/plan|plan:)\s*([\s\S]+)$/i);
+  if (planMatch) {
+    const idea = planMatch[1].trim();
+    if (!idea) {
+      await sendTelegramMessage(chatId, "Tell me the project, e.g. `plan: build a personal website`.");
+      return ok();
+    }
+    try {
+      const plan = await planProject(idea);
+      const planned = planToTasks(plan, "telegram");
+      const existing = (await kv.get<Task[]>(KEY)) ?? [];
+      await kv.set(KEY, [...planned, ...existing]);
+      await enqueuePendingNote({ ...planToNote(plan), at: Date.now() });
+
+      const outline = plan.milestones
+        .map((m, i) => `*${i + 1}. ${m.name}* (${m.tasks.length})`)
+        .join("\n");
+      await sendTelegramMessage(
+        chatId,
+        `📋 *${plan.projectTitle}* — ${plan.milestones.length} milestones, ${planned.length} tasks\n\n${outline}\n\nOn your board and queued for Obsidian.`
+      );
+    } catch (err) {
+      if (err instanceof MissingApiKeyError) {
+        await sendTelegramMessage(chatId, "⚠️ Planner isn't configured (no ANTHROPIC_API_KEY).");
+      } else {
+        await sendTelegramMessage(chatId, "Couldn't build the plan — try again.");
+      }
+    }
     return ok();
   }
 

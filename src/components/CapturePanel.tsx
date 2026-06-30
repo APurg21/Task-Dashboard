@@ -13,9 +13,18 @@ interface Props {
   // Existing project titles, passed to the classifier so "current project"
   // notes can be matched to something the user is already working on.
   projects?: string[];
+  // Called after the planner adds tasks server-side, so the board can refresh.
+  onPlanned?: () => void;
 }
 
-type Stage = "idle" | "classifying" | "pushing";
+type Stage = "idle" | "classifying" | "pushing" | "planning";
+
+interface PlanResult {
+  title: string;
+  milestones: { name: string; count: number }[];
+  taskCount: number;
+  persisted: boolean;
+}
 
 const TYPE_STYLES: Record<NoteType, string> = {
   "current-project":
@@ -28,13 +37,48 @@ const TYPE_STYLES: Record<NoteType, string> = {
   daily: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
 };
 
-export default function CapturePanel({ projects = [] }: Props) {
+export default function CapturePanel({ projects = [], onPlanned }: Props) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<NoteClassification | null>(null);
+  const [plan, setPlan] = useState<PlanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+
+  async function makePlan() {
+    if (!text.trim()) return;
+    setStage("planning");
+    setError(null);
+    setFlash(null);
+    try {
+      const res = await fetch("/api/projects/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Planning failed.");
+        setStage("idle");
+        return;
+      }
+      setPlan({
+        title: data.plan.projectTitle,
+        milestones: data.plan.milestones.map(
+          (m: { name: string; tasks: unknown[] }) => ({ name: m.name, count: m.tasks.length })
+        ),
+        taskCount: data.taskCount,
+        persisted: data.persisted,
+      });
+      setText("");
+      setStage("idle");
+      if (data.persisted) onPlanned?.();
+    } catch {
+      setError("Couldn't reach the planner.");
+      setStage("idle");
+    }
+  }
 
   async function classify() {
     if (!text.trim()) return;
@@ -129,21 +173,59 @@ export default function CapturePanel({ projects = [] }: Props) {
           )}
 
           {!result && (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-zinc-500">
-                Needs an Anthropic API key and the Obsidian Local REST API plugin. See SETUP.md.
+                Classify files one note to Obsidian. Plan breaks an idea into milestones + tasks.
               </p>
               <div className="flex items-center gap-2">
                 {flash && <span className="text-xs text-emerald-600">{flash}</span>}
                 <button
                   type="button"
+                  onClick={makePlan}
+                  disabled={!text.trim() || stage === "planning" || stage === "classifying"}
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  {stage === "planning" ? "Planning…" : "Plan as project"}
+                </button>
+                <button
+                  type="button"
                   onClick={classify}
-                  disabled={!text.trim() || stage === "classifying"}
+                  disabled={!text.trim() || stage === "classifying" || stage === "planning"}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {stage === "classifying" ? "Classifying…" : "Classify"}
                 </button>
               </div>
+            </div>
+          )}
+
+          {plan && (
+            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                  📋 {plan.title}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPlan(null)}
+                  className="text-xs text-emerald-700 hover:underline dark:text-emerald-400"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <ul className="space-y-0.5">
+                {plan.milestones.map((m, i) => (
+                  <li key={i} className="text-xs text-emerald-900 dark:text-emerald-200">
+                    {i + 1}. {m.name}{" "}
+                    <span className="text-emerald-600 dark:text-emerald-400">({m.count})</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                {plan.persisted
+                  ? `Added ${plan.taskCount} tasks — open the Projects view. Queued for Obsidian.`
+                  : `Generated ${plan.taskCount} tasks, but couldn't save (is the database connected locally?).`}
+              </p>
             </div>
           )}
 
