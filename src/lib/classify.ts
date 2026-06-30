@@ -74,7 +74,7 @@ export async function classifyText(
     : "The user has no existing projects on record yet.";
 
   const response = await client.messages.create({
-    model: "claude-opus-4-8",
+    model: "claude-sonnet-4-6",
     max_tokens: 1024,
     output_config: {
       effort: "low",
