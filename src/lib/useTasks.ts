@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { ParsedTask } from "./parse";
-import { newId, Priority, Status, Task } from "./types";
+import { newId, LifeContext, Priority, Status, Task } from "./types";
 
 // --- Module-level store backed by /api/tasks ---------------------------------
 // Keeps the same useSyncExternalStore pattern to avoid set-state-in-effect lint.
@@ -60,7 +60,12 @@ export function useTasks() {
   );
 
   const addTask = useCallback(
-    (title: string, priority: Priority = "medium", status: Status = "todo") => {
+    (
+      title: string,
+      priority: Priority = "medium",
+      status: Status = "todo",
+      context?: LifeContext
+    ) => {
       const trimmed = title.trim();
       if (!trimmed) return;
       const task: Task = {
@@ -69,6 +74,8 @@ export function useTasks() {
         status,
         priority,
         createdAt: nextStamp(),
+        source: "ui",
+        ...(context ? { context } : {}),
       };
       store = [task, ...(store ?? [])];
       notify();

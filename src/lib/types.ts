@@ -1,12 +1,31 @@
 export type Status = "todo" | "doing" | "done";
 export type Priority = "low" | "medium" | "high";
 
+// Which side of life a task or note belongs to — drives the Personal/Work view.
+export type LifeContext = "personal" | "work";
+
+// Where a captured note is filed in Obsidian; also tags tasks by intent.
+export type NoteType =
+  | "current-project"
+  | "new-project"
+  | "brainstorm"
+  | "task"
+  | "daily";
+
+// How a task entered the system, for display and debugging.
+export type TaskSource = "ui" | "telegram" | "import";
+
 export interface Task {
   id: string;
   title: string;
   status: Status;
   priority: Priority;
   createdAt: number;
+  // Optional enrichment — present on AI-classified tasks (Telegram, capture),
+  // absent on quick manual adds (which default to personal).
+  context?: LifeContext;
+  noteType?: NoteType;
+  source?: TaskSource;
 }
 
 export const STATUSES: { id: Status; label: string; accent: string }[] = [
