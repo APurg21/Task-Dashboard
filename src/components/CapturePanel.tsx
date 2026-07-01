@@ -33,6 +33,7 @@ interface DeepState {
   title?: string;
   milestones?: number;
   taskCount?: number;
+  deliverables?: { title: string }[];
 }
 
 const TYPE_STYLES: Record<NoteType, string> = {
@@ -107,6 +108,9 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
             title: job.plan?.projectTitle,
             milestones: job.plan?.milestones?.length,
             taskCount: job.taskCount,
+            deliverables: (job.deliverables ?? []).map((d: { title: string }) => ({
+              title: d.title,
+            })),
           });
           onPlanned?.();
           setStage("idle");
@@ -362,8 +366,21 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
                       Dismiss
                     </button>
                   </div>
+                  {deep.deliverables && deep.deliverables.length > 0 && (
+                    <div className="text-xs text-violet-700 dark:text-violet-400">
+                      <span className="font-medium">
+                        I completed {deep.deliverables.length} myself:
+                      </span>
+                      <ul className="ml-4 list-disc">
+                        {deep.deliverables.map((d, i) => (
+                          <li key={i}>{d.title}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <p className="text-xs text-violet-700 dark:text-violet-400">
-                    {deep.milestones} milestones · {deep.taskCount} tasks — open the Projects view. Queued for Obsidian.
+                    {deep.taskCount ?? 0} task{deep.taskCount === 1 ? "" : "s"} for you — see the Projects
+                    view. Full results queued for Obsidian.
                   </p>
                 </div>
               )}

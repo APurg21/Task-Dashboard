@@ -1,12 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "./redis";
 import { MissingApiKeyError } from "./classify";
-import type { ProjectPlan } from "./planner";
+import type { ProjectPlan, Milestone } from "./planner";
 import { planToTasks } from "./planner";
 import { enqueuePendingNote } from "./obsidian";
 import { sendTelegramMessage } from "./telegram";
 import { safeFileName, type NoteClassification, type LifeContext } from "./notes";
-import type { Task } from "./types";
+import type { Task, Priority } from "./types";
 
 // Deep planner: a multi-agent pipeline that turns one idea into a rigorous plan.
 // intake → research (web) → 3 parallel drafts → critique → synthesize → land.
@@ -27,6 +27,11 @@ export type DeepStatus =
   | "done"
   | "error";
 
+export interface DeepDeliverable {
+  title: string;
+  content: string;
+}
+
 export interface DeepPlanJob {
   id: string;
   idea: string;
@@ -34,6 +39,7 @@ export interface DeepPlanJob {
   message: string;
   plan?: ProjectPlan;
   taskCount?: number;
+  deliverables?: DeepDeliverable[];
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -62,8 +68,14 @@ const SYNTH_SCHEMA = {
               properties: {
                 title: { type: "string", description: "A specific action (3-8 words)." },
                 priority: { type: "string", enum: ["low", "medium", "high"] },
+                owner: {
+                  type: "string",
+                  enum: ["ai", "you"],
+                  description:
+                    "ai = knowledge work the assistant can do now with no external accounts or human judgment (research, analysis, summarizing, drafting text, organizing, comparing options). you = needs the human: calls, meetings, decisions, purchases, approvals, physical actions, or anything needing the user's accounts, relationships, or judgment.",
+                },
               },
-              required: ["title", "priority"],
+              required: ["title", "priority", "owner"],
               additionalProperties: false,
             },
           },
@@ -74,6 +86,27 @@ const SYNTH_SCHEMA = {
     },
   },
   required: ["projectTitle", "context", "summary", "milestones"],
+  additionalProperties: false,
+} as const;
+
+// The assistant executes its own tasks and returns the finished work.
+const DELIVERABLES_SCHEMA = {
+  type: "object",
+  properties: {
+    deliverables: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "The task this delivers." },
+          content: { type: "string", description: "The actual result — findings, analysis, or draft. Concrete and useful." },
+        },
+        required: ["title", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["deliverables"],
   additionalProperties: false,
 } as const;
 
@@ -233,27 +266,86 @@ export async function runDeepPlan(
         },
       ],
     });
-    const plan = JSON.parse(textOf(synthRes)) as ProjectPlan;
-    plan.projectTitle = (plan.projectTitle || "").trim() || "Untitled project";
-    plan.context = (["personal", "work"].includes(plan.context) ? plan.context : "personal") as LifeContext;
-    plan.milestones = Array.isArray(plan.milestones) ? plan.milestones : [];
+    // Parse the synthesized plan (each task tagged owner ai/you).
+    type RawTask = { title: string; priority: Priority; owner?: string };
+    type RawMilestone = { name: string; tasks: RawTask[] };
+    const raw = JSON.parse(textOf(synthRes)) as {
+      projectTitle?: string;
+      context?: string;
+      summary?: string;
+      milestones?: RawMilestone[];
+    };
+    const projectTitle = (raw.projectTitle || "").trim() || "Untitled project";
+    const context = (["personal", "work"].includes(raw.context || "") ? raw.context : "personal") as LifeContext;
+    const summary = raw.summary || "";
+    const rawMilestones = Array.isArray(raw.milestones) ? raw.milestones : [];
 
-    await notify.set("saving", "Saving to your board and vault…", { plan });
+    // Human tasks go on the board; AI tasks get executed below.
+    const humanMilestones: Milestone[] = rawMilestones
+      .map((m) => ({
+        name: m.name,
+        tasks: (m.tasks || [])
+          .filter((t) => t.owner !== "ai")
+          .map((t) => ({ title: t.title, priority: t.priority })),
+      }))
+      .filter((m) => m.tasks.length > 0);
+    const aiTasks = rawMilestones.flatMap((m) =>
+      (m.tasks || []).filter((t) => t.owner === "ai").map((t) => t.title)
+    );
+    const humanPlan: ProjectPlan = { projectTitle, context, summary, milestones: humanMilestones };
 
-    // Land on the board.
-    const tasks = planToTasks(plan, "deep");
+    // Execute the AI-owned tasks and produce real deliverables.
+    let deliverables: DeepDeliverable[] = [];
+    if (aiTasks.length > 0) {
+      await notify.set("saving", `Doing ${aiTasks.length} item${aiTasks.length === 1 ? "" : "s"} myself…`);
+      try {
+        const execRes = await client.messages.create({
+          model: MODEL,
+          max_tokens: 16000,
+          output_config: { effort: "medium", format: { type: "json_schema", schema: DELIVERABLES_SCHEMA } },
+          system:
+            "You are now EXECUTING these knowledge-work tasks yourself, not planning them. For each task, produce the actual deliverable — the research findings, the analysis, the draft copy — concise but specific and genuinely useful. Ground it in the research and any attached file. If a task can't be fully finished without human input or external access, do as much as you can and clearly note what remains.",
+          messages: [
+            {
+              role: "user",
+              content: `Project: "${projectTitle}"\n\nBrief:\n${brief}\n\nResearch:\n${digest}${att}\n\nExecute each of these now and deliver the result:\n${aiTasks
+                .map((t, i) => `${i + 1}. ${t}`)
+                .join("\n")}`,
+            },
+          ],
+        });
+        const parsed = JSON.parse(textOf(execRes)) as { deliverables?: DeepDeliverable[] };
+        deliverables = Array.isArray(parsed.deliverables) ? parsed.deliverables : [];
+      } catch {
+        // If execution fails, don't lose the work — drop them onto the board.
+        const bucket = humanPlan.milestones.find((m) => m.name === "AI to-do") ?? {
+          name: "AI to-do",
+          tasks: [] as { title: string; priority: Priority }[],
+        };
+        if (!humanPlan.milestones.includes(bucket)) humanPlan.milestones.push(bucket);
+        for (const t of aiTasks) bucket.tasks.push({ title: t, priority: "medium" });
+      }
+    }
+
+    await notify.set("saving", "Saving to your board and vault…", { plan: humanPlan });
+
+    // Land the human tasks on the board.
+    const tasks = planToTasks(humanPlan, "deep");
     const existing = (await kv.get<Task[]>(TASKS_KEY)) ?? [];
     await kv.set(TASKS_KEY, [...tasks, ...existing]);
 
-    // Rich Obsidian project page: research + plan checklist.
-    await enqueuePendingNote({ ...buildDeepNote(plan, digest, idea), at: Date.now() });
+    // Obsidian project page: research + what I did + your tasks.
+    await enqueuePendingNote({ ...buildDeepNote(humanPlan, digest, idea, deliverables), at: Date.now() });
 
-    await notify.set("done", "Done.", { plan, taskCount: tasks.length });
+    await notify.set("done", "Done.", { plan: humanPlan, taskCount: tasks.length, deliverables });
 
-    const outline = plan.milestones.map((m, i) => `${i + 1}. ${m.name} (${m.tasks.length})`).join("\n");
-    await notify.tg(
-      `✅ *${plan.projectTitle}* — ${plan.milestones.length} milestones, ${tasks.length} tasks\n\n${outline}\n\nOn your board (Projects view) and queued for Obsidian.`
-    );
+    const didList = deliverables.length
+      ? `\n\n*I completed ${deliverables.length} myself:*\n${deliverables.map((d) => `• ${d.title}`).join("\n")}`
+      : "";
+    const yourList = tasks.length
+      ? `\n\n*Your tasks (${tasks.length}):*\n${humanPlan.milestones.map((m, i) => `${i + 1}. ${m.name} (${m.tasks.length})`).join("\n")}`
+      : "\n\nNothing needs you right now.";
+    await notify.tg(`✅ *${projectTitle}*${didList}${yourList}\n\nFull results + plan queued for Obsidian.`);
   } catch (err) {
     const message = err instanceof MissingApiKeyError ? "No ANTHROPIC_API_KEY." : err instanceof Error ? err.message : "Deep plan failed.";
     await notify.set("error", "Failed", { error: message });
@@ -264,7 +356,8 @@ export async function runDeepPlan(
 function buildDeepNote(
   plan: ProjectPlan,
   research: string,
-  idea: string
+  idea: string,
+  deliverables: DeepDeliverable[] = []
 ): { classification: NoteClassification; text: string } {
   const planBody = plan.milestones
     .map((m) => {
@@ -273,14 +366,19 @@ function buildDeepNote(
     })
     .join("\n\n");
 
+  const deliverablesBody = deliverables.length
+    ? deliverables.map((d) => `### ${d.title}\n${d.content}`).join("\n\n")
+    : "";
+
   const text = [
     `**Idea:** ${idea}`,
     "",
     "## Research",
     research,
+    ...(deliverablesBody ? ["", "## Delivered by AI", deliverablesBody] : []),
     "",
-    "## Plan",
-    planBody,
+    "## Your tasks",
+    planBody || "(none — nothing needs you right now)",
   ].join("\n");
 
   const classification: NoteClassification = {
