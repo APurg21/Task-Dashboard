@@ -73,6 +73,23 @@ Text the bot anything:
 Each one appears on your dashboard instantly and the bot confirms. When you're
 at your computer with Obsidian open, hit **Sync to vault** to file the notes.
 
+### Planning commands
+
+- **`plan: <idea>`** — quick plan. One AI pass → milestones + tasks on the board.
+- **`deepplan: <idea>`** — deep, multi-agent plan. Scopes the idea, researches
+  it on the web, drafts 3 approaches in parallel, red-teams them, and synthesizes
+  one rigorous plan. Runs in the background and texts you progress, then the final
+  outline. Lands in the **Projects** view + a full Obsidian project page.
+
+Both also work from the dashboard's capture box (Plan as project / Deep plan).
+
+> ⚠️ **Enable Fluid Compute (free).** A deep plan makes several AI calls and runs
+> ~2–4 minutes. Enable **Fluid Compute** in Vercel (Settings → Functions) — this
+> raises the **free Hobby** tier to a **300s** max duration, which the pipeline
+> fits inside. No Pro plan needed. The `deepplan` route already sets
+> `maxDuration = 300`. Without Fluid Compute, Hobby caps at ~60s and a deployed
+> deep plan would be cut off. (It always completes when run locally.)
+
 ## Local testing (optional)
 
 To test the webhook on your own machine, expose `localhost:3000` with a tunnel

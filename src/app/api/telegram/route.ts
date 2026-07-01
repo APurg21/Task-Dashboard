@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { kv } from "@/lib/redis";
 import type { NextRequest } from "next/server";
 import { newId, type Task } from "@/lib/types";
@@ -6,6 +7,10 @@ import { enqueuePendingNote } from "@/lib/obsidian";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { NOTE_TYPE_LABELS } from "@/lib/notes";
 import { planProject, planToTasks, planToNote } from "@/lib/planner";
+import { jobKey, runDeepPlan, type DeepPlanJob } from "@/lib/deepPlanner";
+
+// Allow the deep planner to run in the background after the webhook responds.
+export const maxDuration = 300;
 
 // Telegram webhook. You message your bot → this classifies the text, drops a
 // prioritized task on the dashboard (shared Redis), queues the note for Obsidian
@@ -58,6 +63,31 @@ export async function POST(req: NextRequest) {
 
   if (!fromOk) {
     await sendTelegramMessage(chatId, "This bot is private.");
+    return ok();
+  }
+
+  // "deepplan: <idea>" → multi-agent deep plan (runs in the background, texts
+  // progress). Checked before plan: so it doesn't fall through to the quick path.
+  const deepMatch = text.match(/^(?:\/deepplan|deepplan:)\s*([\s\S]+)$/i);
+  if (deepMatch) {
+    const idea = deepMatch[1].trim();
+    if (!idea) {
+      await sendTelegramMessage(chatId, "Tell me the project, e.g. `deepplan: launch a newsletter`.");
+      return ok();
+    }
+    const id = newId();
+    const job: DeepPlanJob = {
+      id,
+      idea,
+      status: "queued",
+      message: "Queued…",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await kv.set(jobKey(id), job);
+    after(async () => {
+      await runDeepPlan(id, idea, chatId);
+    });
     return ok();
   }
 

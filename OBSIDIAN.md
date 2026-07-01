@@ -22,8 +22,9 @@ Get a key at <https://console.anthropic.com>, then add it to `.env.local`:
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Classification uses `claude-sonnet-4-6`. To cut cost/latency you can switch the
-model in `src/lib/classify.ts` (and `src/lib/planner.ts`) to `claude-haiku-4-5`.
+Classification and planning use `claude-sonnet-5`. To cut cost/latency you can
+switch the model in `src/lib/classify.ts`, `src/lib/planner.ts`, and
+`src/lib/deepPlanner.ts` to `claude-haiku-4-5`.
 
 ### 2. Obsidian Local REST API plugin (for writing notes)
 

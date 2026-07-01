@@ -66,7 +66,7 @@ export async function planProject(text: string): Promise<ProjectPlan> {
 
   const client = new Anthropic({ apiKey });
   const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5",
     max_tokens: 4096,
     output_config: {
       effort: "high",

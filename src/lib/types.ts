@@ -13,7 +13,7 @@ export type NoteType =
   | "daily";
 
 // How a task entered the system, for display and debugging.
-export type TaskSource = "ui" | "telegram" | "import";
+export type TaskSource = "ui" | "telegram" | "import" | "deep";
 
 export interface Task {
   id: string;

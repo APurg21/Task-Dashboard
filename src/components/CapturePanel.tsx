@@ -17,13 +17,22 @@ interface Props {
   onPlanned?: () => void;
 }
 
-type Stage = "idle" | "classifying" | "pushing" | "planning";
+type Stage = "idle" | "classifying" | "pushing" | "planning" | "deep";
 
 interface PlanResult {
   title: string;
   milestones: { name: string; count: number }[];
   taskCount: number;
   persisted: boolean;
+}
+
+interface DeepState {
+  status: string;
+  message: string;
+  done?: boolean;
+  title?: string;
+  milestones?: number;
+  taskCount?: number;
 }
 
 const TYPE_STYLES: Record<NoteType, string> = {
@@ -43,8 +52,65 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<NoteClassification | null>(null);
   const [plan, setPlan] = useState<PlanResult | null>(null);
+  const [deep, setDeep] = useState<DeepState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+
+  async function deepPlan() {
+    if (!text.trim()) return;
+    setStage("deep");
+    setError(null);
+    setFlash(null);
+    setPlan(null);
+    setDeep({ status: "queued", message: "Starting the agents…" });
+    try {
+      const res = await fetch("/api/projects/plan-deep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.jobId) {
+        setError(data.error ?? "Couldn't start the deep plan.");
+        setStage("idle");
+        setDeep(null);
+        return;
+      }
+      setText("");
+      // Poll for progress (cap ~10 min). The bot also texts you updates.
+      for (let i = 0; i < 150; i++) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const job = await fetch(`/api/projects/plan-deep?id=${data.jobId}`)
+          .then((r) => r.json())
+          .catch(() => null);
+        if (!job) continue;
+        if (job.status === "done") {
+          setDeep({
+            status: "done",
+            message: "Done.",
+            done: true,
+            title: job.plan?.projectTitle,
+            milestones: job.plan?.milestones?.length,
+            taskCount: job.taskCount,
+          });
+          onPlanned?.();
+          setStage("idle");
+          return;
+        }
+        if (job.status === "error") {
+          setError(job.error ?? "Deep plan failed.");
+          setStage("idle");
+          setDeep(null);
+          return;
+        }
+        setDeep({ status: job.status, message: job.message ?? "Working…" });
+      }
+      setStage("idle");
+    } catch {
+      setError("Lost contact with the planner — it may still finish (check Telegram).");
+      setStage("idle");
+    }
+  }
 
   async function makePlan() {
     if (!text.trim()) return;
@@ -175,14 +241,22 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
           {!result && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-zinc-500">
-                Classify files one note to Obsidian. Plan breaks an idea into milestones + tasks.
+                Classify → Obsidian · Plan → quick milestones · Deep plan → multi-agent (texts you).
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {flash && <span className="text-xs text-emerald-600">{flash}</span>}
                 <button
                   type="button"
+                  onClick={deepPlan}
+                  disabled={!text.trim() || stage !== "idle"}
+                  className="rounded-lg border border-violet-300 px-3 py-2 text-sm font-medium text-violet-700 transition-colors hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40"
+                >
+                  {stage === "deep" ? "Working…" : "Deep plan"}
+                </button>
+                <button
+                  type="button"
                   onClick={makePlan}
-                  disabled={!text.trim() || stage === "planning" || stage === "classifying"}
+                  disabled={!text.trim() || stage !== "idle"}
                   className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   {stage === "planning" ? "Planning…" : "Plan as project"}
@@ -190,12 +264,42 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
                 <button
                   type="button"
                   onClick={classify}
-                  disabled={!text.trim() || stage === "classifying" || stage === "planning"}
+                  disabled={!text.trim() || stage !== "idle"}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {stage === "classifying" ? "Classifying…" : "Classify"}
                 </button>
               </div>
+            </div>
+          )}
+
+          {deep && (
+            <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3 dark:border-violet-900 dark:bg-violet-950/40">
+              {!deep.done ? (
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                  <span className="text-sm text-violet-800 dark:text-violet-300">{deep.message}</span>
+                  <span className="ml-auto text-[11px] text-violet-500">agents working — you’ll get a text</span>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-violet-800 dark:text-violet-300">
+                      🧠 {deep.title}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDeep(null)}
+                      className="text-xs text-violet-700 hover:underline dark:text-violet-400"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                  <p className="text-xs text-violet-700 dark:text-violet-400">
+                    {deep.milestones} milestones · {deep.taskCount} tasks — open the Projects view. Queued for Obsidian.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
