@@ -1,23 +1,20 @@
-# Session Handoff — pick up on the desktop
+# Session Handoff — pick up on another machine
 
-> Written from the laptop. Everything below reflects state as of the last push.
-> The project lives on GitHub (APurg21/Task-Dashboard) and auto-deploys to Vercel
-> (<https://task-dashboard-ap2tone.vercel.app>) on every push to `main`.
+> Reflects state as of the last push. Repo: GitHub `APurg21/Task-Dashboard`,
+> auto-deploys to Vercel on push to `main`. For the full feature rundown see
+> **COMMAND-CENTER.md**.
 
 ---
 
-## 1. Get the desktop in sync (do this first)
+## 1. Get in sync first
 
-Open PowerShell on the desktop.
-
-**If the repo is already cloned there:**
+**If already cloned:**
 ```powershell
 cd $HOME\Task-Dashboard
-git pull          # commit or stash local changes first if git complains
-npm install       # in case dependencies changed
+git pull
+npm install
 ```
-
-**If it's NOT cloned yet** (see SETUP.md for the full version):
+**If not cloned:**
 ```powershell
 winget install Git.Git
 winget install OpenJS.NodeJS.LTS
@@ -29,71 +26,59 @@ npm install
 git config --global user.name "Alex Purgason"
 git config --global user.email "purgasonalexp@gmail.com"
 ```
+Pull env vars (needed for local dev against real data):
+```powershell
+npx vercel link           # sign in, pick Task-Dashboard
+npx vercel env pull .env.local
+```
+**Launch Claude Code from inside the `Task-Dashboard` folder** (not from home).
 
-**Launch Claude Code from inside the `Task-Dashboard` folder**, not from the home
-directory — launching from home makes file searches scan the whole drive (slow +
-memory-heavy).
+Note: `.claude/launch.json` is intentionally NOT committed — it hardcodes this
+machine's Node path. The preview launcher will create/prompt for its own.
 
 ---
 
-## 2. What was done this session
+## 2. The product (short)
 
-- ✅ **AI model switched Opus 4.8 → Sonnet 4.6** in `src/lib/classify.ts` and
-  `src/lib/planner.ts` (cheaper/faster; live on the deployed site). Switch to
-  `claude-haiku-4-5` for even cheaper, or back to `claude-opus-4-8` for max quality.
-- ✅ **`/api/notify` endpoint** added (`src/app/api/notify/route.ts`) — a reusable
-  "ping my iPhone via Telegram" channel. Gated on `TELEGRAM_SECRET_TOKEN`.
-- ✅ **BUILD-PLAN.md** — full architecture + staged build plan (audit of the repo +
-  2026 best-practice research). This is the roadmap.
-- ✅ **AGENTS.md** — carries the Next.js rules block + the "Conductor" multi-agent
-  workflow used when developing this project.
-- ✅ Pulled in the desktop's earlier Life OS / Telegram / Obsidian / planner work.
+A personal Life OS. **Command Center at `/`** (blacklight cockpit) is home; the
+**task board at `/tasks`** is the background engine. You brain-dump via Telegram
+or the board, it organizes in Redis + a Postgres knowledge base, and the command
+page elevates what matters. Full details: **COMMAND-CENTER.md**.
 
-## 3. What is NOT done yet (from BUILD-PLAN.md, in build order)
+## 3. What's built & working
 
-1. Neon Postgres + Drizzle + pgvector; migrate tasks off Redis; expand task schema.
-2. Auth.js v5 (Google) — gates the dashboard AND grants Gmail/Drive/Calendar scopes.
-3. Telegram → conversational Claude agent with memory (currently one-shot classify).
-4. Gmail + Drive read/search tools → index into `sources`.
-5. Obsidian read via a git-backed vault (Obsidian Sync is E2E-encrypted, not
-   cloud-readable — the deployed app can't read it directly).
-6. Daily-summary cron → `/api/notify`.
-7. Approval gates (`pending_actions` + Telegram inline buttons).
-8. Local-file agent → pgvector semantic search.
+- Command Center: 5 views, 4 action modals, editable server-persisted profile.
+- Today view reads/writes the live task board (Top-3 + checkoff write-back + ✦ curate).
+- AI Chat over the knowledge base (Sonnet 5, citations) — command center, task
+  board, and Telegram `ask:`.
+- Editable Chief-of-Staff **voice** (Edit form) applied to every chat surface.
+- Multi-agent **deep planner** (`deepplan:`) — researches, executes its own
+  tasks, delivers results.
+- Telegram capture + `chat`/`ask`/`task`/`plan`/`deepplan` commands.
+- Obsidian **auto-sync**: notes flush to the vault automatically whenever the
+  local app is open (any page). Local-only (plugin listens on localhost).
+- Supabase Postgres + Drizzle schema exists; magic-link auth scaffolded (opt-in,
+  currently open via blank `ALLOWED_EMAIL`).
 
-## 4. Open loops / unverified
+## 4. Next builds (ranked — this is the resume point)
 
-- **`/api/notify` never fired end-to-end.** Verify by visiting once:
-  `https://task-dashboard-ap2tone.vercel.app/api/notify?key=<TELEGRAM_SECRET_TOKEN>&text=test`
-  → your phone should buzz.
-- **`~/.claude` config sync is NOT finished.** The laptop has `~/.claude` as a local
-  git repo (settings + memory committed) but no remote yet. To finish: create an empty
-  private GitHub repo `claude-config`, then on the laptop
-  `git remote add origin <url>; git push -u origin main`; on the desktop clone it into
-  `~/.claude`. Until then, Claude Code settings/memory do NOT sync between machines.
+1. **Multi-task brain dump** — one Telegram message → split into every task/note
+   inside it (today: one message = one task). *Start here.*
+2. **Daily Telegram brief** — morning push of Top-3 + what's aging, so the system
+   reaches out instead of waiting to be opened.
+3. Real adapters — Pipedrive (`PIPEDRIVE_API_TOKEN` drop-in) or bank-CSV money.
+4. Migrate tasks Redis → Postgres; finish/enable magic-link auth for deploy.
 
-## 5. Environment variables
+## 5. Notes / constraints
 
-The **deployed app already has all of these on Vercel** — you only need them locally if
-you run `npm run dev` against real data. Pull them with:
-```powershell
-npx vercel link            # sign in, pick Task-Dashboard
-npx vercel env pull .env.local
-```
+- Model is `claude-sonnet-5` throughout (user directive).
+- Obsidian sync is local-only by design (Local REST API plugin on localhost:27123).
+  The deployed site can't reach it; the local app auto-flushes the queue.
+- Env vars in use: `ANTHROPIC_API_KEY`, `DATABASE_URL`, `REDIS_URL`,
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`, `TELEGRAM_CHAT_ID`,
+  `OBSIDIAN_API_KEY`, plus Supabase (`NEXT_PUBLIC_SUPABASE_URL`, keys).
 
-Currently used: `ANTHROPIC_API_KEY`, `REDIS_URL`, `TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_SECRET_TOKEN`, `TELEGRAM_CHAT_ID`, `OBSIDIAN_API_KEY`, `OBSIDIAN_API_URL`,
-`TWILIO_AUTH_TOKEN`, `TWILIO_MY_PHONE`.
+## 6. First thing to tell Claude on the new machine
 
-## 6. Obsidian note
-
-Note capture writes to the vault via the **Local REST API plugin** (localhost:27123) —
-so it only works when running the app locally with Obsidian open on the same machine.
-The deployed site can't reach localhost; texted notes queue until you hit "Sync to vault".
-
-## 7. First thing to tell Claude on the desktop
-
-> "Read HANDOFF.md and BUILD-PLAN.md. We're resuming the AI task-dashboard build.
->  Start Phase 1: Neon Postgres + Drizzle + pgvector and migrate tasks off Redis."
-
-(Or pick any item from section 3.)
+> "Read HANDOFF.md and COMMAND-CENTER.md. We're building the multi-task brain
+>  dump: one Telegram message should split into every task/note inside it."
