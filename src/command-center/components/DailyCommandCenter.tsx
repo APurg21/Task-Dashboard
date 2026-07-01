@@ -5,11 +5,12 @@ import { PulseStrip } from "./PulseStrip";
 import { ChiefOfStaffChat } from "./ChiefOfStaffChat";
 import type { DailyCommand, Task, LifePriority } from "../lib/types";
 
-function TaskRow({ t }: { t: Task }) {
+function TaskRow({ t, onToggle }: { t: Task; onToggle?: (id: string, done: boolean) => void }) {
   const [done, setDone] = useState(!!t.done);
+  const toggle = () => setDone(d => { const nd = !d; onToggle?.(t.id, nd); return nd; });
   return (
     <div className="flex items-start gap-2.5 rounded-xl" style={{ padding: "10px 11px" }}>
-      <span onClick={() => setDone(d => !d)} className="mt-px cursor-pointer rounded-md" style={{
+      <span onClick={toggle} className="mt-px cursor-pointer rounded-md" style={{
         width: 18, height: 18, flex: "0 0 18px",
         border: `1.7px solid ${done ? "var(--uv)" : "var(--faint)"}`,
         background: done ? "var(--uv)" : "transparent", boxShadow: done ? "var(--g-uv)" : "none",
@@ -22,11 +23,12 @@ function TaskRow({ t }: { t: Task }) {
     </div>
   );
 }
-function LifeRow({ p }: { p: LifePriority }) {
+function LifeRow({ p, onToggle }: { p: LifePriority; onToggle?: (id: string, done: boolean) => void }) {
   const [done, setDone] = useState(!!p.done);
+  const toggle = () => setDone(d => { const nd = !d; onToggle?.(p.id, nd); return nd; });
   return (
     <div className="flex items-start gap-2.5 rounded-xl" style={{ padding: "10px 11px" }}>
-      <span onClick={() => setDone(d => !d)} className="mt-px cursor-pointer rounded-md" style={{
+      <span onClick={toggle} className="mt-px cursor-pointer rounded-md" style={{
         width: 18, height: 18, flex: "0 0 18px",
         border: `1.7px solid ${done ? "var(--uv)" : "var(--faint)"}`,
         background: done ? "var(--uv)" : "transparent", boxShadow: done ? "var(--g-uv)" : "none",
@@ -40,16 +42,16 @@ function LifeRow({ p }: { p: LifePriority }) {
   );
 }
 
-export function DailyCommandCenter({ data }: { data: DailyCommand }) {
+export function DailyCommandCenter({ data, onToggle }: { data: DailyCommand; onToggle?: (id: string, done: boolean) => void }) {
   return (
     <div className="grid gap-3.5" style={{ gridTemplateColumns: "1.5fr 1fr" }}>
       <div className="flex flex-col gap-3.5">
         <div className="grid gap-3.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <Panel accent="uv" title="Top 3 · Work" right="move the needle">
-            <div style={{ padding: "8px 10px 12px" }}>{data.topTasks.map(t => <TaskRow key={t.id} t={t} />)}</div>
+            <div style={{ padding: "8px 10px 12px" }}>{data.topTasks.map(t => <TaskRow key={t.id} t={t} onToggle={onToggle} />)}</div>
           </Panel>
           <Panel accent="magenta" title="Today · Life" right="3 off-clock">
-            <div style={{ padding: "8px 10px 12px" }}>{data.lifePriorities.map(p => <LifeRow key={p.id} p={p} />)}</div>
+            <div style={{ padding: "8px 10px 12px" }}>{data.lifePriorities.map(p => <LifeRow key={p.id} p={p} onToggle={onToggle} />)}</div>
           </Panel>
         </div>
 

@@ -43,7 +43,13 @@ const ACTIONS: { id: Exclude<ModalId, null>; label: string; cls: string; icon: R
   { id: "sunday", label: "Sunday reset", cls: "uv", icon: <path d="M21 12a9 9 0 1 1-3-6.7M21 3v5h-5" /> },
 ];
 
-export function CommandCenter({ data }: { data: CommandCenterData }) {
+export function CommandCenter({
+  data,
+  onToggleTask,
+}: {
+  data: CommandCenterData;
+  onToggleTask?: (id: string, done: boolean) => void;
+}) {
   const [view, setView] = useState<ViewId>("today");
   const [modal, setModal] = useState<ModalId>(null);
 
@@ -102,7 +108,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             </header>
 
             {view === "today" && (
-              <section className="cc-view"><DailyCommandCenter data={data.daily} /></section>
+              <section className="cc-view"><DailyCommandCenter data={data.daily} onToggle={onToggleTask} /></section>
             )}
 
             {view === "work" && (
