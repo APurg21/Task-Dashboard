@@ -1,7 +1,6 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Panel } from "./ui";
-import { adapters } from "../lib/adapters";
 import type { Deal, PipelineSummary } from "../lib/types";
 
 const fmtK = (n: number) => `$${Math.round(n / 1000)}K`;
@@ -60,9 +59,10 @@ const subHeader: React.CSSProperties = {
   letterSpacing: ".12em", color: "var(--faint)", margin: "12px 12px 6px",
 };
 
+// Profile-driven (editable). A real Pipedrive adapter would feed the profile
+// through the live hub rather than this component fetching it directly.
 export function SalesPipelineBrain({ data }: { data: PipelineSummary }) {
-  const [summary, setSummary] = useState<PipelineSummary>(data);
-  useEffect(() => { adapters.pipedrive.getPipeline().then(setSummary).catch(() => {}); }, []);
+  const summary = data;
 
   const stat = (label: string, value: string, color: string, glow?: string) => (
     <div style={{ flex: 1 }}>

@@ -16,6 +16,8 @@ import { ImpulseCheck } from "./ImpulseCheck";
 import { VoiceToTask } from "./VoiceToTask";
 import { WhatAmIMissing } from "./WhatAmIMissing";
 import { SundayReset } from "./SundayReset";
+import { CommandSettings } from "./CommandSettings";
+import type { BlindSpot } from "../lib/types";
 
 type ViewId = "today" | "work" | "life" | "travel" | "know";
 type ModalId = "voice" | "missing" | "impulse" | "sunday" | null;
@@ -46,12 +48,26 @@ const ACTIONS: { id: Exclude<ModalId, null>; label: string; cls: string; icon: R
 export function CommandCenter({
   data,
   onToggleTask,
+  onSaveProfile,
+  blindspots,
+  onCurate,
+  curating,
+  curateWhy,
+  onCapture,
 }: {
   data: CommandCenterData;
   onToggleTask?: (id: string, done: boolean) => void;
+  onSaveProfile?: (next: CommandCenterData) => Promise<void>;
+  blindspots?: BlindSpot[];
+  onCurate?: () => void;
+  curating?: boolean;
+  curateWhy?: string;
+  onCapture?: (text: string) => Promise<{ title: string; context: string; priority: string }>;
+  ready?: boolean;
 }) {
   const [view, setView] = useState<ViewId>("today");
   const [modal, setModal] = useState<ModalId>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setModal(null);
@@ -103,12 +119,26 @@ export function CommandCenter({
                       {a.label}
                     </button>
                   ))}
+                  {onSaveProfile && (
+                    <button className="cc-act uv" onClick={() => setEditOpen(true)}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+                      Edit
+                    </button>
+                  )}
                 </div>
               </div>
             </header>
 
             {view === "today" && (
-              <section className="cc-view"><DailyCommandCenter data={data.daily} onToggle={onToggleTask} /></section>
+              <section className="cc-view">
+                <DailyCommandCenter
+                  data={data.daily}
+                  onToggle={onToggleTask}
+                  onCurate={onCurate}
+                  curating={curating}
+                  curateWhy={curateWhy}
+                />
+              </section>
             )}
 
             {view === "work" && (
@@ -116,7 +146,7 @@ export function CommandCenter({
                 <div className="grid gap-3.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
                   <div className="flex flex-col gap-3.5"><SalesPipelineBrain data={data.pipeline} /></div>
                   <div className="flex flex-col gap-3.5">
-                    <FollowUpRadar />
+                    <FollowUpRadar leads={data.radar} />
                     <WeeklySalesStory story={data.story} ctx={data} />
                     <WritingStyleClone style={data.style} />
                   </div>
@@ -150,10 +180,13 @@ export function CommandCenter({
         </div>
       </div>
 
-      {modal === "voice" && <VoiceToTask onClose={() => setModal(null)} />}
-      {modal === "missing" && <WhatAmIMissing onClose={() => setModal(null)} />}
+      {modal === "voice" && <VoiceToTask onClose={() => setModal(null)} onCapture={onCapture} />}
+      {modal === "missing" && <WhatAmIMissing onClose={() => setModal(null)} spots={blindspots} />}
       {modal === "impulse" && <ImpulseCheck onClose={() => setModal(null)} moneyPulseColor={data.daily.pulses.money.color} />}
       {modal === "sunday" && <SundayReset onClose={() => setModal(null)} plan={data.weekPlan} />}
+      {editOpen && onSaveProfile && (
+        <CommandSettings initial={data} onClose={() => setEditOpen(false)} onSave={onSaveProfile} />
+      )}
     </div>
   );
 }

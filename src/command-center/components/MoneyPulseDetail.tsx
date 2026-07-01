@@ -1,7 +1,6 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Panel, StatusLight } from "./ui";
-import { adapters } from "../lib/adapters";
 
 export interface MoneyPulse {
   color: "green" | "yellow" | "red";
@@ -12,13 +11,12 @@ export interface MoneyPulse {
   note?: string;
 }
 
+// Profile-driven: reads from your saved Command Center profile (editable). A
+// real money adapter (Plaid / bank CSV), once wired, feeds the profile via the
+// live hub rather than this component fetching it directly.
 export function MoneyPulseDetail({ data }: { data: MoneyPulse }) {
-  const [pulse, setPulse] = useState<MoneyPulse>(data);
-  useEffect(() => {
-    adapters.money.getPulse().then(setPulse).catch(() => {});
-  }, []);
-
-  const pct = Math.round((pulse.spent / pulse.budget) * 100);
+  const pulse = data;
+  const pct = pulse.budget ? Math.round((pulse.spent / pulse.budget) * 100) : 0;
   const colorWord = pulse.color.charAt(0).toUpperCase() + pulse.color.slice(1);
 
   return (

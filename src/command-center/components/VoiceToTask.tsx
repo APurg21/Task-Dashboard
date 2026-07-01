@@ -1,35 +1,49 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { Overlay } from "./ImpulseCheck";
 
-export interface Task { id: string; title: string; sub?: string; priority: "high" | "med" | "low"; done?: boolean; due?: string; source?: string; }
-export interface VoiceCapture {
-  id: string; transcript: string; durationSec: number; receivedAt: number;
-  parsed: { tasks: Task[]; crmNotes: { contact: string; note: string }[]; calendarBlocks: { title: string; start: string; end: string }[] };
-}
-
-const DEFAULT_CAPTURE: VoiceCapture = {
-  id: "vc-default",
-  transcript: "Remind me to call the Richmond Chamber and update the Whitecaps report.",
-  durationSec: 6,
-  receivedAt: Date.now(),
-  parsed: {
-    tasks: [
-      { id: "vt1", title: "Call Richmond Chamber — sponsorship follow-up", priority: "high" },
-      { id: "vt2", title: "Update the Whitecaps report", priority: "med" },
-    ],
-    crmNotes: [{ contact: "Richmond Chamber (Dana)", note: "Logged follow-up in Pipedrive" }],
-    calendarBlocks: [{ title: "Chamber + Whitecaps", start: "Today 2:30p", end: "3:00p" }],
-  },
-};
+// Voice → Task. Dictate (phone keyboard mic) or type a brain-dump; it's
+// classified (title / personal-work / priority) and lands on your real board.
+// If no onCapture is wired it falls back to a static demo.
 
 const LABEL: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".1em", color: "var(--uv)", marginBottom: 6 };
 const PK: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".1em", color: "var(--uv)", textTransform: "uppercase" };
+const BTN: React.CSSProperties = {
+  width: "100%", marginTop: 12, padding: 12, border: 0, fontFamily: "var(--font-display)", fontWeight: 700,
+  letterSpacing: ".04em", fontSize: 13, color: "#fff",
+  background: "linear-gradient(160deg,var(--violet),#5b54c9)", boxShadow: "var(--g-vi)", cursor: "pointer",
+};
 
-export function VoiceToTask({ onClose, capture }: { onClose: () => void; capture?: VoiceCapture }) {
-  const cap = capture ?? DEFAULT_CAPTURE;
-  const { tasks, crmNotes, calendarBlocks } = cap.parsed;
-  const total = tasks.length + calendarBlocks.length + crmNotes.length;
+export function VoiceToTask({
+  onClose,
+  onCapture,
+}: {
+  onClose: () => void;
+  onCapture?: (text: string) => Promise<{ title: string; context: string; priority: string }>;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<{ title: string; context: string; priority: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function add() {
+    const t = text.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (onCapture) {
+        const res = await onCapture(t);
+        setCreated(res);
+      } else {
+        setCreated({ title: t.slice(0, 80), context: "personal", priority: "medium" });
+      }
+    } catch {
+      setError("Couldn't add that — try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <Overlay onClose={onClose} title="Voice → Task" accent="var(--magenta)"
@@ -44,39 +58,46 @@ export function VoiceToTask({ onClose, capture }: { onClose: () => void; capture
           ))}
         </div>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--faint)" }}>
-          voice note · 0:0{cap.durationSec}
+          dictate with your keyboard mic, or type
         </span>
       </div>
 
-      <div style={LABEL}>TRANSCRIPT</div>
-      <p style={{ fontStyle: "italic", fontSize: 13.5, color: "var(--text)", marginBottom: 16 }}>{cap.transcript}</p>
-
-      <div style={LABEL}>PARSED INTO →</div>
-
-      {tasks.map(t => (
-        <div key={t.id} style={{ border: "1px solid var(--edge)", borderRadius: 11, padding: "11px 13px", marginBottom: 9, background: "rgba(10,4,24,.4)" }}>
-          <div style={PK}>✓ Task</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>{t.title}</div>
-        </div>
-      ))}
-      {calendarBlocks.map((b, i) => (
-        <div key={`cal-${i}`} style={{ border: "1px solid var(--edge)", borderRadius: 11, padding: "11px 13px", marginBottom: 9, background: "rgba(10,4,24,.4)" }}>
-          <div style={PK}>◷ Calendar block</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>{b.start}–{b.end} · &quot;{b.title}&quot;</div>
-        </div>
-      ))}
-      {crmNotes.map((n, i) => (
-        <div key={`crm-${i}`} style={{ border: "1px solid var(--edge)", borderRadius: 11, padding: "11px 13px", marginBottom: 9, background: "rgba(10,4,24,.4)" }}>
-          <div style={PK}>◈ CRM note</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Logged to {n.contact}</div>
-        </div>
-      ))}
-
-      <button onClick={onClose} className="w-full rounded-xl" style={{
-        marginTop: 12, padding: 12, border: 0, fontFamily: "var(--font-display)", fontWeight: 700,
-        letterSpacing: ".04em", fontSize: 13, color: "#fff",
-        background: "linear-gradient(160deg,var(--violet),#5b54c9)", boxShadow: "var(--g-vi)",
-      }}>Confirm all {total}</button>
+      {!created ? (
+        <>
+          <div style={LABEL}>WHAT&apos;S ON YOUR MIND?</div>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="e.g. Call the Chamber back about the sponsor night, and I need to hit the gym"
+            rows={4}
+            autoFocus
+            style={{
+              width: "100%", resize: "vertical", background: "rgba(10,4,24,.6)", border: "1px solid var(--edge)",
+              borderRadius: 10, padding: "10px 12px", color: "var(--text)", fontFamily: "var(--font-body)", fontSize: 13, lineHeight: 1.5,
+            }}
+          />
+          {error && <p style={{ color: "var(--red)", fontSize: 12, marginTop: 8 }}>{error}</p>}
+          <button onClick={add} disabled={!text.trim() || busy} style={{ ...BTN, opacity: !text.trim() || busy ? 0.6 : 1 }}>
+            {busy ? "Adding…" : "Add to board"}
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={LABEL}>ADDED TO YOUR BOARD →</div>
+          <div style={{ border: "1px solid rgba(75,227,140,.4)", borderRadius: 11, padding: "12px 13px", marginBottom: 9, background: "rgba(75,227,140,.08)" }}>
+            <div style={PK}>✓ Task</div>
+            <div style={{ fontSize: 13.5, marginTop: 4 }}>{created.title}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--faint)", marginTop: 5 }}>
+              {created.context} · {created.priority} priority
+            </div>
+          </div>
+          <button onClick={() => { setCreated(null); setText(""); }} style={{
+            width: "100%", marginTop: 4, padding: 10, borderRadius: 10, background: "transparent",
+            border: "1px solid var(--edge)", color: "var(--dim)", fontSize: 12.5, cursor: "pointer",
+          }}>Add another</button>
+          <button onClick={onClose} style={BTN}>Done</button>
+        </>
+      )}
     </Overlay>
   );
 }

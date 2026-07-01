@@ -4,9 +4,13 @@ import { Panel } from "./ui";
 import { adapters } from "../lib/adapters";
 import type { WarmLead } from "../lib/types";
 
-export function FollowUpRadar({ onDraft }: { onDraft?: (lead: WarmLead) => void }) {
-  const [leads, setLeads] = useState<WarmLead[]>([]);
-  useEffect(() => { adapters.gmail.findWarmLeads().then(setLeads).catch(() => {}); }, []);
+export function FollowUpRadar({ leads: leadsProp, onDraft }: { leads?: WarmLead[]; onDraft?: (lead: WarmLead) => void }) {
+  const [fetched, setFetched] = useState<WarmLead[]>([]);
+  useEffect(() => {
+    if (leadsProp) return; // profile-provided; skip the adapter
+    adapters.gmail.findWarmLeads().then(setFetched).catch(() => {});
+  }, [leadsProp]);
+  const leads = leadsProp ?? fetched;
 
   const shown = leads.slice(0, 5);
   const extra = Math.max(0, leads.length - shown.length);

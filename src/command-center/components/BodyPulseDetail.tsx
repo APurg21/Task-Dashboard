@@ -1,7 +1,6 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Panel } from "./ui";
-import { adapters } from "../lib/adapters";
 
 export interface BodyPulse {
   color: "green" | "yellow" | "red";
@@ -12,11 +11,10 @@ export interface BodyPulse {
   note?: string;
 }
 
+// Profile-driven (editable via the Edit form); a real health adapter would feed
+// the profile through the live hub rather than fetching here.
 export function BodyPulseDetail({ data }: { data: BodyPulse }) {
-  const [pulse, setPulse] = useState<BodyPulse>(data);
-  useEffect(() => {
-    adapters.health.getPulse().then(setPulse).catch(() => {});
-  }, []);
+  const pulse = data;
 
   const tiles: { title: string; color: string; value: string; sub: string }[] = [
     {
