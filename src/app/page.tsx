@@ -121,7 +121,10 @@ export default function Home() {
 
           <CapturePanel projects={activeProjects} onPlanned={reload} />
 
-          <ImportPanel onImport={(text) => addMany(parseImport(text))} />
+          <ImportPanel
+            onImport={(text, context) => addMany(parseImport(text), context)}
+            defaultContext={defaultContext}
+          />
 
           <div className="flex items-center justify-between px-1">
             <p className="text-xs text-zinc-500">

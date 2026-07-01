@@ -88,7 +88,7 @@ export function useTasks() {
     []
   );
 
-  const addMany = useCallback((parsed: ParsedTask[]) => {
+  const addMany = useCallback((parsed: ParsedTask[], context?: LifeContext) => {
     const toAdd: Task[] = parsed
       .filter((p) => p.title.trim().length > 0)
       .map((p) => ({
@@ -97,6 +97,8 @@ export function useTasks() {
         status: p.status ?? "todo",
         priority: p.priority ?? "medium",
         createdAt: nextStamp(),
+        source: "import" as const,
+        ...(context ? { context } : {}),
       }));
     if (toAdd.length === 0) return 0;
     store = [...toAdd, ...(store ?? [])];

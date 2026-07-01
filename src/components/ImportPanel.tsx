@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { parseImport } from "@/lib/parse";
+import type { LifeContext } from "@/lib/types";
 
 interface Props {
-  onImport: (text: string) => number;
+  onImport: (text: string, context: LifeContext) => number;
+  defaultContext?: LifeContext;
 }
 
 const PLACEHOLDER = `Paste a list or CSV, e.g.
@@ -18,17 +20,18 @@ title,status,priority
 Ship release,in progress,high
 Write docs,todo,low`;
 
-export default function ImportPanel({ onImport }: Props) {
+export default function ImportPanel({ onImport, defaultContext = "personal" }: Props) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [context, setContext] = useState<LifeContext>(defaultContext);
   const [flash, setFlash] = useState<string | null>(null);
 
   const preview = useMemo(() => parseImport(text), [text]);
 
   function handleImport() {
-    const count = onImport(text);
+    const count = onImport(text, context);
     setText("");
-    setFlash(count > 0 ? `Imported ${count} task${count === 1 ? "" : "s"}` : "Nothing to import");
+    setFlash(count > 0 ? `Imported ${count} task${count === 1 ? "" : "s"} to ${context}` : "Nothing to import");
     window.setTimeout(() => setFlash(null), 2500);
   }
 
@@ -66,6 +69,23 @@ export default function ImportPanel({ onImport }: Props) {
             </p>
             <div className="flex items-center gap-2">
               {flash && <span className="text-xs text-emerald-600">{flash}</span>}
+              <div className="flex rounded-lg border border-zinc-300 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
+                {(["personal", "work"] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setContext(c)}
+                    aria-pressed={context === c}
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium capitalize transition-colors ${
+                      context === c
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={() => setText("")}
