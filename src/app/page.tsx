@@ -7,6 +7,7 @@ import type { LifeContext } from "@/lib/types";
 import QuickAdd from "@/components/QuickAdd";
 import ImportPanel from "@/components/ImportPanel";
 import CapturePanel from "@/components/CapturePanel";
+import ChatPanel from "@/components/ChatPanel";
 import KanbanBoard from "@/components/KanbanBoard";
 import ListView from "@/components/ListView";
 import ProjectsView from "@/components/ProjectsView";
@@ -118,6 +119,8 @@ export default function Home() {
               defaultContext={defaultContext}
             />
           </section>
+
+          <ChatPanel />
 
           <CapturePanel projects={activeProjects} onPlanned={reload} />
 

@@ -4,6 +4,7 @@ import { MissingApiKeyError } from "./classify";
 import type { ProjectPlan, Milestone } from "./planner";
 import { planToTasks } from "./planner";
 import { enqueuePendingNote } from "./obsidian";
+import { ingestDocument } from "./knowledge";
 import { sendTelegramMessage } from "./telegram";
 import { safeFileName, type NoteClassification, type LifeContext } from "./notes";
 import type { Task, Priority } from "./types";
@@ -336,6 +337,23 @@ export async function runDeepPlan(
 
     // Obsidian project page: research + what I did + your tasks.
     await enqueuePendingNote({ ...buildDeepNote(humanPlan, digest, idea, deliverables), at: Date.now() });
+
+    // File the plan + AI deliverables in the knowledge base for AI Chat retrieval.
+    const kbBody = [
+      humanPlan.summary,
+      digest,
+      ...deliverables.map((d) => `## ${d.title}\n${d.content}`),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    await ingestDocument({
+      title: projectTitle,
+      content: kbBody,
+      sourceType: "deep-plan",
+      sourceName: projectTitle,
+      sourceId: jobId,
+      context: humanPlan.context,
+    });
 
     await notify.set("done", "Done.", { plan: humanPlan, taskCount: tasks.length, deliverables });
 

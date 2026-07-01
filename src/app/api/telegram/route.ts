@@ -9,6 +9,8 @@ import { NOTE_TYPE_LABELS } from "@/lib/notes";
 import { planProject, planToTasks, planToNote } from "@/lib/planner";
 import { jobKey, runDeepPlan, type DeepPlanJob } from "@/lib/deepPlanner";
 import { getMode, setMode, telegramChat, clearTelegramChat } from "@/lib/tgchat";
+import { ingestDocument } from "@/lib/knowledge";
+import { answerQuestion } from "@/lib/chat";
 
 // Allow the deep planner to run in the background after the webhook responds.
 export const maxDuration = 300;
@@ -72,7 +74,7 @@ export async function POST(req: NextRequest) {
     await setMode(chatId, "chat");
     await sendTelegramMessage(
       chatId,
-      "💬 Chat mode on — I'll talk, nothing gets saved. Use `task:`, `plan:`, or `deepplan:` to capture. /capture to switch back."
+      "💬 Chat mode on — I'll talk, nothing gets saved. Use `task:`, `plan:`, or `deepplan:` to capture, or `ask:` to query your knowledge base. /capture to switch back."
     );
     return ok();
   }
@@ -90,6 +92,31 @@ export async function POST(req: NextRequest) {
   const chatMatch = text.match(/^chat:\s*([\s\S]+)$/i);
   if (chatMatch) {
     await telegramChat(chatId, chatMatch[1].trim());
+    return ok();
+  }
+
+  // "ask: <question>" → answer from the knowledge base with citations.
+  const askMatch = text.match(/^(?:\/ask|ask:)\s*([\s\S]+)$/i);
+  if (askMatch) {
+    const question = askMatch[1].trim();
+    if (!question) {
+      await sendTelegramMessage(chatId, "Ask me something, e.g. `ask: what did the academy plan say about pricing?`");
+      return ok();
+    }
+    try {
+      const { answer, sources, usedKnowledge } = await answerQuestion(question);
+      const cites =
+        usedKnowledge && sources.length
+          ? "\n\n" + sources.map((s) => `[${s.n}] ${s.title}`).join("\n")
+          : "";
+      await sendTelegramMessage(chatId, `${answer}${cites}`);
+    } catch (err) {
+      if (err instanceof MissingApiKeyError) {
+        await sendTelegramMessage(chatId, "⚠️ Chat isn't configured (no ANTHROPIC_API_KEY).");
+      } else {
+        await sendTelegramMessage(chatId, "Couldn't answer that — try again.");
+      }
+    }
     return ok();
   }
 
@@ -200,6 +227,16 @@ export async function POST(req: NextRequest) {
 
   // Queue the note for Obsidian — flushed by the local app's sync.
   await enqueuePendingNote({ classification, text: captureText, at: Date.now() });
+
+  // Also file it in the knowledge base so AI Chat can retrieve it later.
+  await ingestDocument({
+    title: classification.title,
+    content: captureText,
+    sourceType: "telegram",
+    sourceName: classification.title,
+    context: classification.context,
+    tags: classification.tags,
+  });
 
   const where = classification.matchedProject
     ? ` → _${classification.matchedProject}_`

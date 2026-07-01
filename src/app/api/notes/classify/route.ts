@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { classifyText, MissingApiKeyError } from "@/lib/classify";
+import { ingestDocument } from "@/lib/knowledge";
 
 // Classify a free-form note into a vault destination using Claude. The heavy
 // lifting lives in lib/classify so the Telegram webhook shares the exact logic.
@@ -22,6 +23,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const classification = await classifyText(text, projects);
+    // File it in the knowledge base so AI Chat can retrieve it (no-op without a DB).
+    await ingestDocument({
+      title: classification.title,
+      content: text,
+      sourceType: "note",
+      sourceName: classification.title,
+      context: classification.context,
+      tags: classification.tags,
+    });
     return Response.json(classification);
   } catch (err) {
     if (err instanceof MissingApiKeyError) {
