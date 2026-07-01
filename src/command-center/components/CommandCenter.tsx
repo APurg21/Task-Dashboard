@@ -68,6 +68,7 @@ export function CommandCenter({ data }: { data: CommandCenterData }) {
             </span>
             COSMIC COMMAND · CHIEF OF STAFF
           </div>
+          <a href="/tasks" className="cc-taskslink">Task board →</a>
         </div>
 
         <div className="cc-app">
@@ -196,6 +197,8 @@ const SHELL_CSS = `
 .cc-brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:700;letter-spacing:.02em;font-size:13px;color:var(--dim)}
 .cc-gem{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:conic-gradient(from 200deg,var(--violet),var(--magenta),var(--cyan),var(--uv),var(--violet));box-shadow:var(--g-vi)}
 .cc-gem svg{width:15px;height:15px}
+.cc-taskslink{font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;color:var(--dim);background:rgba(10,4,24,.6);border:1px solid var(--edge);border-radius:999px;padding:6px 13px;transition:.15s;text-decoration:none}
+.cc-taskslink:hover{border-color:var(--edge-hot);color:var(--uv);box-shadow:var(--g-uv)}
 .cc-app{display:grid;grid-template-columns:66px 1fr;gap:14px}
 .cc-rail{background:rgba(9,4,22,.6);border:1px solid var(--edge);border-radius:20px;backdrop-filter:blur(12px);display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 0}
 .cc-nav{width:46px;height:46px;border:0;background:transparent;border-radius:13px;color:var(--faint);display:grid;place-items:center;position:relative;transition:.15s;cursor:pointer}
