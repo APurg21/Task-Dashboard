@@ -1,3 +1,8 @@
+/* Cosmic Command fonts + blacklight design tokens (scoped to .cosmic subtree).
+   These @imports must precede @import "tailwindcss" — Tailwind v4 expands that
+   into rules inline, and CSS requires all @import statements to come first. */
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "../command-center/tokens.css";
 @import "tailwindcss";
 
 /* Use class-based dark mode so the theme is forced on regardless of the
@@ -16,8 +21,10 @@
 }
 
 /* Bold Times New Roman everywhere — !important to override Tailwind's
-   font-weight / font-family utilities. */
-* {
+   font-weight / font-family utilities. Excludes the Cosmic Command subtree
+   (.cosmic) so its blacklight typography (Chakra Petch / Inter / JetBrains
+   Mono, set via inline styles) isn't clobbered by this !important rule. */
+*:not(.cosmic):not(.cosmic *) {
   font-family: "Times New Roman", Times, serif !important;
   font-weight: bold !important;
 }
@@ -25,4 +32,15 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+/* cosmic-command integrated */
+
+/* Cosmic Command base: body font + normal weight the components inherit from;
+   individual elements override to display/mono via inline styles. */
+.cosmic {
+  font-family: var(--font-body);
+  font-weight: 400;
+  color: var(--text);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }

@@ -1,0 +1,54 @@
+/* ============================================================
+   COSMIC COMMAND — design tokens (blacklight / UV night-ops)
+   Import once in app/globals.css:  @import "./command-center/tokens.css";
+   ============================================================ */
+:root{
+  /* surfaces */
+  --void:#080312;
+  --void2:#0D0622;
+  --void3:#130A2C;
+  --glass:rgba(21,11,44,.55);
+  --glass-2:rgba(30,16,60,.60);
+  --edge:rgba(157,92,255,.22);
+  --edge-hot:rgba(157,92,255,.50);
+
+  /* UV / neon accents */
+  --uv:#B6FF3C;        /* signature blacklight green */
+  --cyan:#35E7FF;
+  --magenta:#FF3DBE;
+  --violet:#9D5CFF;
+  --amber:#FFC24D;
+
+  /* semantic status (pulses / verdicts) */
+  --green:#4BE38C;
+  --yellow:#FFC24D;
+  --red:#FF5C6C;
+
+  /* text */
+  --text:#F3EEFF;
+  --dim:#A79BD0;
+  --faint:#6E6198;
+
+  /* glows */
+  --g-uv:0 0 12px rgba(182,255,60,.5), 0 0 30px rgba(182,255,60,.22);
+  --g-cy:0 0 12px rgba(53,231,255,.45), 0 0 26px rgba(53,231,255,.20);
+  --g-mg:0 0 12px rgba(255,61,190,.45), 0 0 26px rgba(255,61,190,.20);
+  --g-vi:0 0 13px rgba(157,92,255,.5), 0 0 30px rgba(157,92,255,.25);
+
+  /* type */
+  --font-display:"Chakra Petch",system-ui,sans-serif;
+  --font-body:"Inter",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,monospace;
+
+  /* radii */
+  --r-lg:20px; --r-md:14px; --r-sm:10px;
+}
+
+/* accent → color map, used by <Panel accent="uv|cyan|violet|magenta|amber"> */
+.acc-uv{box-shadow:inset 3px 0 0 var(--uv), 0 16px 46px -34px #000}
+.acc-cyan{box-shadow:inset 3px 0 0 var(--cyan), 0 16px 46px -34px #000}
+.acc-violet{box-shadow:inset 3px 0 0 var(--violet), 0 16px 46px -34px #000}
+.acc-magenta{box-shadow:inset 3px 0 0 var(--magenta), 0 16px 46px -34px #000}
+.acc-amber{box-shadow:inset 3px 0 0 var(--amber), 0 16px 46px -34px #000}
+
+@media (prefers-reduced-motion:reduce){ *{animation:none!important} }
