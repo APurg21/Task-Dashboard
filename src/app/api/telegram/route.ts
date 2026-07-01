@@ -8,6 +8,7 @@ import { sendTelegramMessage } from "@/lib/telegram";
 import { NOTE_TYPE_LABELS } from "@/lib/notes";
 import { planProject, planToTasks, planToNote } from "@/lib/planner";
 import { jobKey, runDeepPlan, type DeepPlanJob } from "@/lib/deepPlanner";
+import { getMode, setMode, telegramChat, clearTelegramChat } from "@/lib/tgchat";
 
 // Allow the deep planner to run in the background after the webhook responds.
 export const maxDuration = 300;
@@ -63,6 +64,32 @@ export async function POST(req: NextRequest) {
 
   if (!fromOk) {
     await sendTelegramMessage(chatId, "This bot is private.");
+    return ok();
+  }
+
+  // Mode + chat commands.
+  if (/^\/chat$/i.test(text)) {
+    await setMode(chatId, "chat");
+    await sendTelegramMessage(
+      chatId,
+      "💬 Chat mode on — I'll talk, nothing gets saved. Use `task:`, `plan:`, or `deepplan:` to capture. /capture to switch back."
+    );
+    return ok();
+  }
+  if (/^\/(capture|stop)$/i.test(text)) {
+    await setMode(chatId, "capture");
+    await sendTelegramMessage(chatId, "📥 Capture mode on — messages become tasks again.");
+    return ok();
+  }
+  if (/^\/clear$/i.test(text)) {
+    await clearTelegramChat(chatId);
+    await sendTelegramMessage(chatId, "🧹 Chat history cleared.");
+    return ok();
+  }
+  // One-off chat regardless of mode.
+  const chatMatch = text.match(/^chat:\s*([\s\S]+)$/i);
+  if (chatMatch) {
+    await telegramChat(chatId, chatMatch[1].trim());
     return ok();
   }
 
@@ -123,13 +150,22 @@ export async function POST(req: NextRequest) {
     return ok();
   }
 
+  // "task: <x>" forces capture even in chat mode; otherwise, in chat mode we
+  // converse instead of saving.
+  const taskMatch = text.match(/^(?:\/task|task:)\s*([\s\S]+)$/i);
+  if (!taskMatch && (await getMode(chatId)) === "chat") {
+    await telegramChat(chatId, text);
+    return ok();
+  }
+  const captureText = taskMatch ? taskMatch[1].trim() : text;
+
   // Pass current active task titles as project context for matching.
   const tasks = (await kv.get<Task[]>(KEY)) ?? [];
   const projects = tasks.filter((t) => t.status !== "done").map((t) => t.title);
 
   let classification;
   try {
-    classification = await classifyText(text, projects);
+    classification = await classifyText(captureText, projects);
   } catch (err) {
     if (err instanceof MissingApiKeyError) {
       await sendTelegramMessage(chatId, "⚠️ Classifier isn't configured (no ANTHROPIC_API_KEY).");
@@ -138,14 +174,14 @@ export async function POST(req: NextRequest) {
     // Fall back to a plain task so nothing is lost if classification fails.
     const task: Task = {
       id: newId(),
-      title: text,
+      title: captureText,
       status: "todo",
       priority: "medium",
       createdAt: Date.now(),
       source: "telegram",
     };
     await kv.set(KEY, [task, ...tasks]);
-    await sendTelegramMessage(chatId, `Added to your board: *${text}*`);
+    await sendTelegramMessage(chatId, `Added to your board: *${captureText}*`);
     return ok();
   }
 
@@ -163,7 +199,7 @@ export async function POST(req: NextRequest) {
   await kv.set(KEY, [task, ...tasks]);
 
   // Queue the note for Obsidian — flushed by the local app's sync.
-  await enqueuePendingNote({ classification, text, at: Date.now() });
+  await enqueuePendingNote({ classification, text: captureText, at: Date.now() });
 
   const where = classification.matchedProject
     ? ` → _${classification.matchedProject}_`

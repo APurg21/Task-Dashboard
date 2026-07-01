@@ -53,11 +53,21 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
   const [result, setResult] = useState<NoteClassification | null>(null);
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [deep, setDeep] = useState<DeepState | null>(null);
+  const [file, setFile] = useState<{ name: string; text: string } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
+  async function handleFile(f: File | null | undefined) {
+    if (!f) return;
+    // Text-based files (CSV, TXT, MD, JSON). PDFs/images need extra handling.
+    const content = await f.text().catch(() => "");
+    setFile({ name: f.name, text: content });
+    setError(null);
+  }
+
   async function deepPlan() {
-    if (!text.trim()) return;
+    if (!text.trim() && !file) return;
     setStage("deep");
     setError(null);
     setFlash(null);
@@ -67,7 +77,11 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
       const res = await fetch("/api/projects/plan-deep", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          fileText: file?.text ?? "",
+          fileName: file?.name ?? "",
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.jobId) {
@@ -77,6 +91,7 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
         return;
       }
       setText("");
+      setFile(null);
       // Poll for progress (cap ~10 min). The bot also texts you updates.
       for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 4000));
@@ -232,6 +247,58 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
             className="w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
           />
 
+          {/* Drop a CSV/text file for the multi-agent deep planner to analyze. */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              handleFile(e.dataTransfer.files?.[0]);
+            }}
+            className={`flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-xs transition-colors ${
+              dragOver
+                ? "border-violet-500 bg-violet-50 dark:bg-violet-950/40"
+                : "border-zinc-300 dark:border-zinc-700"
+            }`}
+          >
+            {file ? (
+              <>
+                <span className="truncate text-zinc-600 dark:text-zinc-300">
+                  📎 {file.name}{" "}
+                  <span className="text-zinc-400">
+                    ({Math.max(1, Math.round(file.text.length / 1000))}k chars)
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFile(null)}
+                  className="shrink-0 text-zinc-500 hover:text-rose-500"
+                >
+                  Remove
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-zinc-500">
+                  Drop a CSV/text file here → the deep planner analyzes it.
+                </span>
+                <label className="shrink-0 cursor-pointer rounded-md border border-zinc-300 px-2 py-1 font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
+                  Attach
+                  <input
+                    type="file"
+                    accept=".csv,.txt,.md,.json,.tsv,text/*"
+                    className="hidden"
+                    onChange={(e) => handleFile(e.target.files?.[0])}
+                  />
+                </label>
+              </>
+            )}
+          </div>
+
           {error && (
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
               {error}
@@ -248,7 +315,7 @@ export default function CapturePanel({ projects = [], onPlanned }: Props) {
                 <button
                   type="button"
                   onClick={deepPlan}
-                  disabled={!text.trim() || stage !== "idle"}
+                  disabled={(!text.trim() && !file) || stage !== "idle"}
                   className="rounded-lg border border-violet-300 px-3 py-2 text-sm font-medium text-violet-700 transition-colors hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40"
                 >
                   {stage === "deep" ? "Working…" : "Deep plan"}

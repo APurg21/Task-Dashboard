@@ -138,9 +138,25 @@ interface Notifier {
   tg: (message: string) => Promise<void>;
 }
 
-export async function runDeepPlan(jobId: string, idea: string, chatId?: number | string): Promise<void> {
+export interface Attachment {
+  name: string;
+  text: string;
+}
+
+export async function runDeepPlan(
+  jobId: string,
+  idea: string,
+  chatId?: number | string,
+  attachment?: Attachment
+): Promise<void> {
   const createdAt = (await getJob(jobId))?.createdAt ?? Date.now();
   const tgTarget = chatId ?? process.env.TELEGRAM_CHAT_ID;
+
+  // Attached file becomes the primary material the agents work on.
+  const att =
+    attachment && attachment.text.trim()
+      ? `\n\nAttached file "${attachment.name}" — treat this as the primary material to analyze:\n"""\n${attachment.text.slice(0, 24000)}\n"""`
+      : "";
 
   const notify: Notifier = {
     set: async (status, message, extra = {}) => {
@@ -167,7 +183,7 @@ export async function runDeepPlan(jobId: string, idea: string, chatId?: number |
     const brief = await ask(
       client,
       "You scope a project before planning. Be concise and decisive.",
-      `Turn this into a short brief: the goal, the likely audience/owner, key constraints, and 3-5 explicit ASSUMPTIONS you're making (since you can't ask questions). Idea: "${idea}"`,
+      `Turn this into a short brief: the goal, the likely audience/owner, key constraints, and 3-5 explicit ASSUMPTIONS you're making (since you can't ask questions). Idea: "${idea}"${att}`,
       "low"
     );
 
@@ -185,7 +201,7 @@ export async function runDeepPlan(jobId: string, idea: string, chatId?: number |
         ask(
           client,
           `You are planner #${i + 1} of 3. Draft a distinct project plan optimized for ${lens}. Commit fully to this lens so the three drafts differ. Use phases with concrete steps.`,
-          `Idea: "${idea}"\n\nBrief:\n${brief}\n\nResearch:\n${digest}\n\nWrite your plan as phases, each with concrete actions. Note any key risks.`,
+          `Idea: "${idea}"\n\nBrief:\n${brief}\n\nResearch:\n${digest}${att}\n\nWrite your plan as phases, each with concrete actions. Note any key risks.`,
           "medium"
         )
       )
@@ -211,7 +227,7 @@ export async function runDeepPlan(jobId: string, idea: string, chatId?: number |
       messages: [
         {
           role: "user",
-          content: `Idea: "${idea}"\n\nBrief:\n${brief}\n\nResearch:\n${digest}\n\nDrafts:\n${drafts
+          content: `Idea: "${idea}"\n\nBrief:\n${brief}\n\nResearch:\n${digest}${att}\n\nDrafts:\n${drafts
             .map((d, i) => `--- Draft ${i + 1} ---\n${d}`)
             .join("\n\n")}\n\nCritique:\n${critique}\n\nProduce the final plan.`,
         },

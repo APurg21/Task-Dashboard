@@ -11,19 +11,24 @@ import { jobKey, getJob, runDeepPlan, type DeepPlanJob } from "@/lib/deepPlanner
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  let body: { text?: unknown };
+  let body: { text?: unknown; fileText?: unknown; fileName?: unknown };
   try {
     body = await req.json();
   } catch {
     return new Response("Invalid JSON", { status: 400 });
   }
   const text = typeof body.text === "string" ? body.text.trim() : "";
-  if (!text) return new Response("text required", { status: 400 });
+  const fileText = typeof body.fileText === "string" ? body.fileText : "";
+  const fileName = typeof body.fileName === "string" && body.fileName ? body.fileName : "file";
+  if (!text && !fileText.trim()) return new Response("text or file required", { status: 400 });
+
+  const idea = text || `Analyze the attached file "${fileName}" and build a plan from it.`;
+  const attachment = fileText.trim() ? { name: fileName, text: fileText } : undefined;
 
   const id = newId();
   const job: DeepPlanJob = {
     id,
-    idea: text,
+    idea,
     status: "queued",
     message: "Queued…",
     createdAt: Date.now(),
@@ -34,7 +39,7 @@ export async function POST(req: NextRequest) {
   // Runs in the background, kept alive up to maxDuration. Uses TELEGRAM_CHAT_ID
   // for updates so the dashboard trigger texts you too.
   after(async () => {
-    await runDeepPlan(id, text);
+    await runDeepPlan(id, idea, undefined, attachment);
   });
 
   return Response.json({ jobId: id });

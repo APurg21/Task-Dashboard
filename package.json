@@ -11,6 +11,8 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.4",
     "@anthropic-ai/sdk": "^0.107.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
     "@upstash/redis": "^1.38.0",
     "@vercel/kv": "^3.0.0",
     "ai": "^7.0.9",
