@@ -1,16 +1,8 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import type { CommandCenterData } from "../lib/types";
+import { Panel } from "./ui";
 import { DailyCommandCenter } from "./DailyCommandCenter";
-import { FollowUpRadar } from "./FollowUpRadar";
-import { SalesPipelineBrain } from "./SalesPipelineBrain";
-import { WeeklySalesStory } from "./WeeklySalesStory";
-import { WritingStyleClone } from "./WritingStyleClone";
-import { SelfImprovementPlan } from "./SelfImprovementPlan";
-import { CleanLifeChecklist } from "./CleanLifeChecklist";
-import { MoneyPulseDetail } from "./MoneyPulseDetail";
-import { BodyPulseDetail } from "./BodyPulseDetail";
-import { TravelMode } from "./TravelMode";
 import { ObsidianKnowledge } from "./ObsidianKnowledge";
 import { ImpulseCheck } from "./ImpulseCheck";
 import { VoiceToTask } from "./VoiceToTask";
@@ -143,34 +135,29 @@ export function CommandCenter({
 
             {view === "work" && (
               <section className="cc-view">
-                <div className="grid gap-3.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                  <div className="flex flex-col gap-3.5"><SalesPipelineBrain data={data.pipeline} /></div>
-                  <div className="flex flex-col gap-3.5">
-                    <FollowUpRadar leads={data.radar} />
-                    <WeeklySalesStory story={data.story} ctx={data} />
-                    <WritingStyleClone style={data.style} />
-                  </div>
-                </div>
+                <ComingSoon
+                  title="Work · Sales"
+                  line="Your pipeline, follow-up radar, weekly story, and in-your-voice drafts live here — once you connect a real source (Pipedrive or a sales sheet). Until then it's a preview, kept out of your way."
+                />
               </section>
             )}
 
             {view === "life" && (
               <section className="cc-view">
-                <div className="grid gap-3.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                  <div className="flex flex-col gap-3.5">
-                    <SelfImprovementPlan moves={data.improvement} />
-                    <CleanLifeChecklist data={data.daily.pulses.clean} />
-                  </div>
-                  <div className="flex flex-col gap-3.5">
-                    <MoneyPulseDetail data={data.daily.pulses.money} />
-                    <BodyPulseDetail data={data.daily.pulses.body} />
-                  </div>
-                </div>
+                <ComingSoon
+                  title="Life"
+                  line="Money & body pulses, clean-life checklist, and your self-improvement plan turn on when you connect your numbers (bank/health) or fill them in Edit. Hidden for now so the dashboard isn't showing you a made-up life."
+                />
               </section>
             )}
 
             {view === "travel" && (
-              <section className="cc-view"><TravelMode data={data.travel} /></section>
+              <section className="cc-view">
+                <ComingSoon
+                  title="Travel mode"
+                  line="Flips on when you've got a trip — flights, hotel, prospects to hit, and local spots. Nothing to show until then."
+                />
+              </section>
             )}
 
             {view === "know" && (
@@ -188,6 +175,22 @@ export function CommandCenter({
         <CommandSettings initial={data} onClose={() => setEditOpen(false)} onSave={onSaveProfile} />
       )}
     </div>
+  );
+}
+
+// Placeholder for modules that aren't connected to real data yet — so the
+// cockpit never shows a made-up life. Comes back the moment a real source is wired.
+function ComingSoon({ title, line }: { title: string; line: string }) {
+  return (
+    <Panel accent="violet" title={title} right="not connected yet">
+      <div style={{ padding: "28px 22px", textAlign: "center" }}>
+        <div style={{ fontSize: 22, marginBottom: 10 }}>✨</div>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: ".02em", marginBottom: 8 }}>
+          Coming online soon
+        </div>
+        <p style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.6, maxWidth: 460, margin: "0 auto" }}>{line}</p>
+      </div>
+    </Panel>
   );
 }
 

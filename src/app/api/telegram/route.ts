@@ -2,7 +2,8 @@ import { after } from "next/server";
 import { kv } from "@/lib/redis";
 import type { NextRequest } from "next/server";
 import { newId, type Task } from "@/lib/types";
-import { classifyText, MissingApiKeyError } from "@/lib/classify";
+import { MissingApiKeyError } from "@/lib/classify";
+import { splitBrainDump } from "@/lib/braindump";
 import { enqueuePendingNote } from "@/lib/obsidian";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { NOTE_TYPE_LABELS } from "@/lib/notes";
@@ -177,6 +178,41 @@ export async function POST(req: NextRequest) {
     return ok();
   }
 
+  // "done", "done 1", "done 1 3", "done all" → check off items from the last
+  // morning brief. Only intercepts when a brief exists and the message is just
+  // "done" + numbers/all (so "done the laundry" still captures normally).
+  const doneMatch = text.match(/^done\b\s*(all|[\d\s,]*)$/i);
+  if (doneMatch) {
+    const briefIds = (await kv.get<string[]>(`brief:last:${chatId}`)) ?? [];
+    if (briefIds.length) {
+      const arg = doneMatch[1].trim().toLowerCase();
+      const idxs =
+        arg === "" || arg === "all"
+          ? briefIds.map((_, i) => i + 1)
+          : (arg.match(/\d+/g) ?? []).map(Number);
+      const toMark = new Set(idxs.map((n) => briefIds[n - 1]).filter(Boolean));
+      const all = (await kv.get<Task[]>(KEY)) ?? [];
+      let count = 0;
+      const updated = all.map((t) => {
+        if (toMark.has(t.id) && t.status !== "done") {
+          count++;
+          return { ...t, status: "done" as const };
+        }
+        return t;
+      });
+      await kv.set(KEY, updated);
+      const stillOpen = briefIds.filter((id) => updated.find((t) => t.id === id)?.status !== "done").length;
+      await sendTelegramMessage(
+        chatId,
+        count
+          ? `✅ Marked ${count} done.${stillOpen ? ` ${stillOpen} left from this morning.` : " That's the brief cleared — nice."}`
+          : "Those are already done (or not on this morning's brief)."
+      );
+      return ok();
+    }
+    // No brief on record — fall through and treat it as a normal capture.
+  }
+
   // "task: <x>" forces capture even in chat mode; otherwise, in chat mode we
   // converse instead of saving.
   const taskMatch = text.match(/^(?:\/task|task:)\s*([\s\S]+)$/i);
@@ -190,61 +226,68 @@ export async function POST(req: NextRequest) {
   const tasks = (await kv.get<Task[]>(KEY)) ?? [];
   const projects = tasks.filter((t) => t.status !== "done").map((t) => t.title);
 
-  let classification;
+  // Brain dump: split one message into every distinct item and classify each,
+  // so a run-on becomes the right set of tasks instead of one blob.
+  let items;
   try {
-    classification = await classifyText(captureText, projects);
+    items = await splitBrainDump(captureText, projects);
   } catch (err) {
     if (err instanceof MissingApiKeyError) {
       await sendTelegramMessage(chatId, "⚠️ Classifier isn't configured (no ANTHROPIC_API_KEY).");
       return ok();
     }
-    // Fall back to a plain task so nothing is lost if classification fails.
+    // Fall back to a plain task so nothing is lost if the split fails.
     const task: Task = {
-      id: newId(),
-      title: captureText,
-      status: "todo",
-      priority: "medium",
-      createdAt: Date.now(),
-      source: "telegram",
+      id: newId(), title: captureText, status: "todo", priority: "medium",
+      createdAt: Date.now(), source: "telegram",
     };
     await kv.set(KEY, [task, ...tasks]);
     await sendTelegramMessage(chatId, `Added to your board: *${captureText}*`);
     return ok();
   }
 
-  // Create the dashboard task.
-  const task: Task = {
+  const now = Date.now();
+  const single = items.length === 1;
+  const newTasks: Task[] = items.map((c, i) => ({
     id: newId(),
-    title: classification.title,
+    title: c.title,
     status: "todo",
-    priority: classification.priority,
-    createdAt: Date.now(),
-    context: classification.context,
-    noteType: classification.noteType,
+    priority: c.priority,
+    createdAt: now + (items.length - i), // preserve dump order (newest-first list)
+    context: c.context,
+    noteType: c.noteType,
     source: "telegram",
-  };
-  await kv.set(KEY, [task, ...tasks]);
+    ...(c.matchedProject ? { project: c.matchedProject } : {}),
+  }));
+  await kv.set(KEY, [...newTasks, ...tasks]);
 
-  // Queue the note for Obsidian — flushed by the local app's sync.
-  await enqueuePendingNote({ classification, text: captureText, at: Date.now() });
+  // Queue each note for Obsidian + file each in the knowledge base. For a single
+  // capture keep the full original text; for a split use the item's own content.
+  for (const c of items) {
+    const body = single ? captureText : [c.title, c.summary].filter(Boolean).join(" — ");
+    await enqueuePendingNote({ classification: c, text: body, at: Date.now() });
+    await ingestDocument({
+      title: c.title, content: body, sourceType: "telegram",
+      sourceName: c.title, context: c.context, tags: c.tags,
+    });
+  }
 
-  // Also file it in the knowledge base so AI Chat can retrieve it later.
-  await ingestDocument({
-    title: classification.title,
-    content: captureText,
-    sourceType: "telegram",
-    sourceName: classification.title,
-    context: classification.context,
-    tags: classification.tags,
-  });
-
-  const where = classification.matchedProject
-    ? ` → _${classification.matchedProject}_`
-    : "";
-  await sendTelegramMessage(
-    chatId,
-    `✅ *${classification.title}*\n${NOTE_TYPE_LABELS[classification.noteType]} · ${classification.context} · ${classification.priority} priority${where}\nOn your board and queued for Obsidian.`
-  );
+  if (single) {
+    const c = items[0];
+    const where = c.matchedProject ? ` → _${c.matchedProject}_` : "";
+    await sendTelegramMessage(
+      chatId,
+      `✅ *${c.title}*\n${NOTE_TYPE_LABELS[c.noteType]} · ${c.context} · ${c.priority} priority${where}\nOn your board and queued for Obsidian.`
+    );
+  } else {
+    const lines = items
+      .map((c) => `• *${c.title}* — ${c.context}/${c.priority}`)
+      .join("\n");
+    await sendTelegramMessage(
+      chatId,
+      `🧠 Captured *${items.length}* from that:\n${lines}\n\nAll on your board and queued for Obsidian.`
+    );
+  }
 
   return ok();
 }

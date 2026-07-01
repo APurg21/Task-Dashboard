@@ -1,7 +1,6 @@
 "use client";
 import React, { useState } from "react";
 import { Panel, Tag } from "./ui";
-import { PulseStrip } from "./PulseStrip";
 import { ChiefOfStaffChat } from "./ChiefOfStaffChat";
 import type { DailyCommand, Task, LifePriority } from "../lib/types";
 
@@ -70,36 +69,8 @@ export function DailyCommandCenter({ data, onToggle, onCurate, curating, curateW
               )}
             </div>
           </Panel>
-          <Panel accent="magenta" title="Today · Life" right="3 off-clock">
+          <Panel accent="magenta" title="Today · Life" right="off-clock">
             <div style={{ padding: "8px 10px 12px" }}>{data.lifePriorities.map(p => <LifeRow key={p.id} p={p} onToggle={onToggle} />)}</div>
-          </Panel>
-        </div>
-
-        <PulseStrip money={data.pulses.money} body={data.pulses.body} clean={data.pulses.clean} />
-
-        <div className="grid gap-3.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          <Panel accent="cyan" title="Today's Meetings" right={`${data.meetings.length}`}>
-            <div style={{ padding: "8px 6px 12px" }}>
-              {data.meetings.map(m => (
-                <div key={m.id} className="flex gap-3 rounded-xl" style={{ padding: "9px 11px" }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--cyan)", width: 52, flex: "0 0 52px" }}>{m.time}</span>
-                  <div><div style={{ fontSize: 12.5 }}>{m.title}</div>{m.where && <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--faint)", marginTop: 2 }}>{m.where}</div>}</div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-          <Panel accent="amber" title="Emails That Matter" right={`${data.emails.length}`}>
-            <div style={{ padding: "8px 10px 12px" }}>
-              {data.emails.map(e => (
-                <div key={e.id} className="flex items-start gap-2.5 rounded-xl" style={{ padding: "10px 11px" }}>
-                  <div className="flex-1">
-                    <div style={{ fontSize: 13 }}>{e.subject}</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--faint)", marginTop: 3 }}>{e.from} · {e.ageDays}d</div>
-                  </div>
-                  <Tag kind={e.action === "reply" ? "high" : "med"}>{e.action.toUpperCase()}</Tag>
-                </div>
-              ))}
-            </div>
           </Panel>
         </div>
       </div>
