@@ -206,6 +206,9 @@ export interface WeekPlan {
 
 // ---------- top-level dashboard state ----------
 export interface CommandCenterData {
+  // Free-text voice directive for how the Chief of Staff (and every chat
+  // surface) talks to you. Edited in the settings form, stored on the profile.
+  chiefStyle?: string;
   daily: DailyCommand;
   pipeline: PipelineSummary;
   radar: WarmLead[];

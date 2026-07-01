@@ -175,6 +175,17 @@ export function CommandSettings({
           </Field>
         </div>
 
+        {/* 1b · CHIEF OF STAFF VOICE ────────────────────────────── */}
+        <div style={sectionStyle}>Chief of Staff — how it talks to you</div>
+        <Field label="Voice / tone (applies to the Chief of Staff, the task-board chat, and Telegram)">
+          <textarea
+            style={{ ...inputStyle, minHeight: 120, resize: "vertical", lineHeight: 1.5 }}
+            placeholder="e.g. Direct, casual, no fluff. Answer first, then a line of why. Give a real opinion — 'yes, worth it' / 'no, better move is…'. Plain English, quick bullets, copy-paste-ready writing. Always end on the next action."
+            value={d.chiefStyle ?? ""}
+            onChange={(e) => edit((x) => (x.chiefStyle = e.target.value))}
+          />
+        </Field>
+
         {/* 2 · MONEY PULSE ─────────────────────────────────────── */}
         <div style={sectionStyle}>Money Pulse</div>
         <div className="flex gap-2" style={{ flexWrap: "wrap" }}>

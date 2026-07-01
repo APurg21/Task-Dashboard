@@ -1,6 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { searchChunks, type Retrieved } from "./knowledge";
 import { MissingApiKeyError } from "./classify";
+import { kv } from "./redis";
+
+// The user's editable Chief-of-Staff voice, set in the command center's Edit
+// form and stored on the profile. Loaded here so EVERY chat surface (Chief of
+// Staff, the task-board chat, Telegram ask:) speaks in their preferred voice.
+export async function getChiefStyle(): Promise<string | undefined> {
+  try {
+    const p = await kv.get<{ chiefStyle?: string }>("cc:profile");
+    const s = p?.chiefStyle?.trim();
+    return s || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // AI Chat over your knowledge base. Retrieve the most relevant chunks, hand them
 // to Sonnet 5 as numbered sources, and require inline [n] citations. Answers are
@@ -46,10 +60,16 @@ Rules:
 
 export async function answerQuestion(
   question: string,
-  history: ChatTurn[] = []
+  history: ChatTurn[] = [],
+  style?: string
 ): Promise<ChatResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new MissingApiKeyError("ANTHROPIC_API_KEY is not set.");
+
+  const voice = style ?? (await getChiefStyle());
+  const system = voice
+    ? `${SYSTEM}\n\nVOICE — this is how the user wants you to talk to them; follow it closely:\n${voice}`
+    : SYSTEM;
 
   const chunks = await searchChunks(question, 6);
   const usedKnowledge = chunks.length > 0;
@@ -75,7 +95,7 @@ export async function answerQuestion(
     model: "claude-sonnet-5",
     max_tokens: 1500,
     output_config: { effort: "low" },
-    system: SYSTEM,
+    system,
     messages: [
       ...priorTurns,
       {
