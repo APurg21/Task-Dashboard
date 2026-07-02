@@ -74,12 +74,20 @@ export function LiveCommandCenter() {
       return [...pool].sort(byPriorityThenRecent).slice(0, 3);
     };
 
+    const subFor = (t: BoardTask) => {
+      const parts: string[] = [];
+      if (t.entityType && t.entityType !== "task") parts.push(t.entityType);
+      if (t.dueAt) parts.push("due " + new Date(t.dueAt).toISOString().slice(0, 10));
+      if (t.project) parts.push(t.project);
+      return parts.length ? parts.join(" · ") : undefined;
+    };
+
     const topTasks: CCTask[] = pick(workOpen, curated?.work).map((t) => ({
       id: t.id, title: t.title, priority: toCCPriority(t.priority), done: false, source: t.source,
-      sub: t.project || undefined,
+      sub: subFor(t),
     }));
     const lifePriorities: LifePriority[] = pick(lifeOpen, curated?.life).map((t) => ({
-      id: t.id, title: t.title, tag: tagFor(t.title), done: false,
+      id: t.id, title: t.title, tag: tagFor(t.title), done: false, sub: subFor(t),
     }));
 
     return {

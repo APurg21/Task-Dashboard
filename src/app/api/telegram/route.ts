@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { newId, type Task } from "@/lib/types";
 import { MissingApiKeyError } from "@/lib/classify";
 import { splitBrainDump } from "@/lib/braindump";
+import { draftFollowUp } from "@/lib/draft";
 import { enqueuePendingNote } from "@/lib/obsidian";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { NOTE_TYPE_LABELS } from "@/lib/notes";
@@ -213,6 +214,59 @@ export async function POST(req: NextRequest) {
     // No brief on record — fall through and treat it as a normal capture.
   }
 
+  // "draft 1" → write a follow-up in your voice for an item from the last
+  // brief/nudge (great for deals/people going quiet).
+  const draftMatch = text.match(/^draft\s+(\d+)$/i);
+  if (draftMatch) {
+    const briefIds = (await kv.get<string[]>(`brief:last:${chatId}`)) ?? [];
+    const id = briefIds[Number(draftMatch[1]) - 1];
+    const all = (await kv.get<Task[]>(KEY)) ?? [];
+    const task = all.find((t) => t.id === id);
+    if (!task) {
+      await sendTelegramMessage(chatId, "Nothing at that number from the last brief/nudge.");
+      return ok();
+    }
+    try {
+      const body = await draftFollowUp(task);
+      await sendTelegramMessage(chatId, `✍️ *${task.title}*\n\n${body}`);
+    } catch (err) {
+      await sendTelegramMessage(
+        chatId,
+        err instanceof MissingApiKeyError ? "⚠️ No ANTHROPIC_API_KEY." : "Couldn't draft that — try again."
+      );
+    }
+    return ok();
+  }
+
+  // "deals" / "people" / "ideas" / "list meetings" → query the board by supertag.
+  const listMatch = text.match(/^(?:list\s+)?(deals?|people|persons?|ideas?|errands?|meetings?|tasks?)$/i);
+  if (listMatch) {
+    const w = listMatch[1].toLowerCase();
+    const type = w.startsWith("deal") ? "deal"
+      : w.startsWith("pe") || w.startsWith("person") ? "person"
+      : w.startsWith("idea") ? "idea"
+      : w.startsWith("errand") ? "errand"
+      : w.startsWith("meeting") ? "meeting"
+      : "task";
+    const all = (await kv.get<Task[]>(KEY)) ?? [];
+    const matched = all.filter((t) => t.status !== "done" && (t.entityType ?? "task") === type);
+    if (!matched.length) {
+      await sendTelegramMessage(chatId, `No open ${type}s on your board.`);
+      return ok();
+    }
+    const lines = matched
+      .slice(0, 15)
+      .map((t) => {
+        const f = t.fields && Object.keys(t.fields).length
+          ? " — " + Object.entries(t.fields).map(([k, v]) => `${k}: ${v}`).join(", ")
+          : "";
+        return `• *${t.title}*${f}`;
+      })
+      .join("\n");
+    await sendTelegramMessage(chatId, `*${type[0].toUpperCase() + type.slice(1)}s (${matched.length}):*\n${lines}`);
+    return ok();
+  }
+
   // "task: <x>" forces capture even in chat mode; otherwise, in chat mode we
   // converse instead of saving.
   const taskMatch = text.match(/^(?:\/task|task:)\s*([\s\S]+)$/i);
@@ -257,6 +311,9 @@ export async function POST(req: NextRequest) {
     context: c.context,
     noteType: c.noteType,
     source: "telegram",
+    entityType: c.entityType,
+    ...(Object.keys(c.fields).length ? { fields: c.fields } : {}),
+    ...(c.dueAt ? { dueAt: c.dueAt } : {}),
     ...(c.matchedProject ? { project: c.matchedProject } : {}),
   }));
   await kv.set(KEY, [...newTasks, ...tasks]);
@@ -268,21 +325,22 @@ export async function POST(req: NextRequest) {
     await enqueuePendingNote({ classification: c, text: body, at: Date.now() });
     await ingestDocument({
       title: c.title, content: body, sourceType: "telegram",
-      sourceName: c.title, context: c.context, tags: c.tags,
+      sourceName: c.title, context: c.context, tags: [c.entityType, ...c.tags],
     });
   }
+
+  const tag = (c: (typeof items)[number]) =>
+    `${c.entityType !== "task" ? c.entityType + " · " : ""}${c.context}/${c.priority}${c.dueAt ? " · due " + new Date(c.dueAt).toISOString().slice(0, 10) : ""}`;
 
   if (single) {
     const c = items[0];
     const where = c.matchedProject ? ` → _${c.matchedProject}_` : "";
     await sendTelegramMessage(
       chatId,
-      `✅ *${c.title}*\n${NOTE_TYPE_LABELS[c.noteType]} · ${c.context} · ${c.priority} priority${where}\nOn your board and queued for Obsidian.`
+      `✅ *${c.title}*\n${tag(c)}${where}\nOn your board and queued for Obsidian.`
     );
   } else {
-    const lines = items
-      .map((c) => `• *${c.title}* — ${c.context}/${c.priority}`)
-      .join("\n");
+    const lines = items.map((c) => `• *${c.title}* — ${tag(c)}`).join("\n");
     await sendTelegramMessage(
       chatId,
       `🧠 Captured *${items.length}* from that:\n${lines}\n\nAll on your board and queued for Obsidian.`

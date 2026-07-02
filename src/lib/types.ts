@@ -15,6 +15,28 @@ export type NoteType =
 // How a task entered the system, for display and debugging.
 export type TaskSource = "ui" | "telegram" | "import" | "deep";
 
+// Supertag — a structured type for a capture, so the brain is queryable
+// ("show my open deals", "who do I owe a follow-up"). Beyond noteType, which is
+// about where a note filed; entityType is about what the thing IS.
+export type EntityType =
+  | "task"
+  | "deal"
+  | "person"
+  | "idea"
+  | "errand"
+  | "meeting"
+  | "note";
+
+export const ENTITY_TYPES: EntityType[] = [
+  "task",
+  "deal",
+  "person",
+  "idea",
+  "errand",
+  "meeting",
+  "note",
+];
+
 export interface Task {
   id: string;
   title: string;
@@ -30,6 +52,13 @@ export interface Task {
   // under their project and milestone.
   project?: string;
   milestone?: string;
+  // Supertag layer: a structured type + free-form fields (contact, value,
+  // stage…) and an optional parsed due date, so the brain becomes a database.
+  entityType?: EntityType;
+  fields?: Record<string, string>;
+  dueAt?: number;
+  // When we last proactively nudged about this item (so we don't repeat).
+  nudgedAt?: number;
 }
 
 export const STATUSES: { id: Status; label: string; accent: string }[] = [
