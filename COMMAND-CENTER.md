@@ -60,12 +60,16 @@ Cross-linked: "Task board →" in the command-center header, "⌘ Command Center
 
 ## Telegram commands (the brain dump)
 
-Default (no prefix): your message is classified (title / personal-work / priority) → task on the board + filed in the knowledge base + queued to Obsidian.
+Default (no prefix): your run-on is **split into every distinct item**, each classified + **supertagged** (type: deal/person/idea/errand/meeting/task/note · fields like contact/value/stage · a due date if implied) → tasks on the board + filed in the knowledge base + queued to Obsidian.
 
 - `/chat` — talk, nothing saved · `/capture` (or `/stop`) — back to capture · `/clear` — wipe chat history
 - `chat: <x>` — one-off chat · `ask: <x>` — answer from your knowledge base (in your voice, with citations)
 - `task: <x>` — force-capture a task · `plan: <x>` — quick milestones+tasks
 - `deepplan: <x>` — multi-agent deep planner: researches, **does the analysis itself**, texts progress, drops only the human to-dos on your board
+- `deals` / `people` / `ideas` / `list meetings` — query the board by supertag (with fields)
+- `done 1` / `done all` — check off morning-brief / nudge items · `draft 1` — write a ready-to-send follow-up for that item in your voice
+
+**Two proactive pushes (crons):** the **morning brief** (`/api/brief`, ~7am) texts your top 3; the **afternoon nudge** (`/api/nudge`, ~4pm) texts you *only when something's slipping* — overdue, high-priority going stale, or a deal/person gone quiet — with done/draft options. Deduped so it won't nag twice.
 
 ## Under the hood
 
