@@ -62,31 +62,41 @@ export async function updateSession(request: NextRequest) {
 
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  // A malformed env value (e.g. a placeholder URL) must degrade to a clear
+  // error, not throw and 500 every request on the site.
+  let user: { email?: string } | null = null;
+  let supabase: ReturnType<typeof createServerClient> | null = null;
+  try {
+    supabase = createServerClient(url, key, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    });
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (err) {
+    console.error("[auth] Supabase client failed — check NEXT_PUBLIC_SUPABASE_URL/KEY values:", err);
+    return NextResponse.json(
+      { error: "Auth misconfigured — NEXT_PUBLIC_SUPABASE_URL or ANON_KEY value is invalid." },
+      { status: 503 }
+    );
+  }
 
   const authedOk =
     user != null && user.email?.toLowerCase() === allowed.toLowerCase();
 
   if (!authedOk) {
     // Signed in as the wrong account → drop the session before bouncing.
-    if (user) await supabase.auth.signOut();
+    if (user && supabase) await supabase.auth.signOut();
     if (isApi) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
