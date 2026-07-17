@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local vault-sync state (machine-specific)
+scripts/.vault-sync-manifest.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

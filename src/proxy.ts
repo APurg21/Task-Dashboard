@@ -2,15 +2,15 @@ import { type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 // Next 16 "proxy" convention (formerly middleware). Refreshes the Supabase
-// session and gates page routes to the allowed email.
+// session and gates BOTH pages and /api data routes. Webhooks that carry their
+// own secrets (Telegram, Twilio, crons, ingest) are excepted inside
+// updateSession — everything else requires the allowed user's session.
 export function proxy(request: NextRequest) {
   return updateSession(request);
 }
 
-// Gate page routes only. Exclude API (Telegram webhook must stay public), the
-// login/auth routes, Next internals, and static assets.
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|login|auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import type { Task } from "@/lib/types";
+import { useMemo, useSyncExternalStore } from "react";
+import { toMs, type Task } from "@/lib/types";
 
 interface Props {
   // Tasks already filtered to the active section (personal/work/all).
@@ -17,17 +17,24 @@ interface Metric {
 
 const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
 
+const emptySubscribe = () => () => {};
+// Hour-stable clock snapshot: stable within the hour (so React never sees a
+// changing snapshot mid-render) but fresh enough for a "this week" cutoff.
+const hourNow = () => Math.floor(Date.now() / 3_600_000) * 3_600_000;
+
 export default function MetricCards({ tasks }: Props) {
+  const now = useSyncExternalStore(emptySubscribe, hourNow, () => 0);
+
   const metrics = useMemo<Metric[]>(() => {
     const todo = tasks.filter((t) => t.status === "todo").length;
     const doing = tasks.filter((t) => t.status === "doing").length;
     const highOpen = tasks.filter(
       (t) => t.status !== "done" && t.priority === "high"
     ).length;
-    // createdAt is a high-resolution stamp (ms * 1000); normalize to ms.
-    const weekAgoStamp = (Date.now() - ONE_WEEK) * 1000;
+    // createdAt arrives in mixed scales (ms and µs) — normalize each stamp.
+    // now === 0 only in the server snapshot, where tasks is always empty.
     const doneWeek = tasks.filter(
-      (t) => t.status === "done" && t.createdAt >= weekAgoStamp
+      (t) => t.status === "done" && toMs(t.createdAt) >= now - ONE_WEEK
     ).length;
 
     return [
@@ -36,7 +43,7 @@ export default function MetricCards({ tasks }: Props) {
       { label: "High priority", value: highOpen, hint: "open & urgent", accent: "text-rose-400" },
       { label: "Done this week", value: doneWeek, hint: "completed", accent: "text-emerald-400" },
     ];
-  }, [tasks]);
+  }, [tasks, now]);
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

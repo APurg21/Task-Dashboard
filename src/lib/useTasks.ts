@@ -43,10 +43,10 @@ function subscribe(cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 
-let seq = 0;
+// Plain ms since epoch, like the server writes. (The old `Date.now() * 1000`
+// µs-ish stamps are still in stored data — always compare via toMs().)
 function nextStamp(): number {
-  seq += 1;
-  return Date.now() * 1000 + (seq % 1000);
+  return Date.now();
 }
 
 // --- Hook --------------------------------------------------------------------
@@ -103,15 +103,17 @@ export function useTasks() {
     if (toAdd.length === 0) return 0;
     store = [...toAdd, ...(store ?? [])];
     notify();
-    Promise.all(
-      toAdd.map((task) =>
-        fetch("/api/tasks", {
+    // Sequential, not parallel: the server does read-modify-write on one Redis
+    // blob, so N concurrent POSTs overwrite each other and silently drop rows.
+    (async () => {
+      for (const task of toAdd) {
+        await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(task),
-        })
-      )
-    ).catch(() => {});
+        }).catch(() => {});
+      }
+    })();
     return toAdd.length;
   }, []);
 
@@ -151,9 +153,12 @@ export function useTasks() {
       .map((t) => t.id);
     store = (store ?? []).filter((t) => t.status !== "done");
     notify();
-    Promise.all(
-      toRemove.map((id) => fetch(`/api/tasks/${id}`, { method: "DELETE" }))
-    ).catch(() => {});
+    // Sequential for the same lost-update reason as addMany.
+    (async () => {
+      for (const id of toRemove) {
+        await fetch(`/api/tasks/${id}`, { method: "DELETE" }).catch(() => {});
+      }
+    })();
   }, []);
 
   return { tasks, loaded, addTask, addMany, updateTask, removeTask, clearDone, reload };

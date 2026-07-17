@@ -31,13 +31,12 @@ async function notify(text: string) {
 }
 
 // Gate on the existing TELEGRAM_SECRET_TOKEN (already set in Vercel) so we don't
-// introduce a new secret. Accept it via ?key=, an x-notify-key header, or POST body.
+// introduce a new secret. Header or POST body only — never the query string,
+// which lands in request logs.
 function authorized(req: NextRequest, bodyKey?: string): boolean {
   const secret = process.env.TELEGRAM_SECRET_TOKEN;
   if (!secret) return false; // fail closed if no secret configured
-  const url = new URL(req.url);
-  const provided =
-    url.searchParams.get("key") ?? bodyKey ?? req.headers.get("x-notify-key") ?? "";
+  const provided = req.headers.get("x-notify-key") ?? bodyKey ?? "";
   return provided === secret;
 }
 

@@ -10,7 +10,7 @@ export default function OptIn() {
       </p>
       <h2>How it works</h2>
       <ul>
-        <li>The application owner texts a task (e.g. "Buy groceries") to the registered number.</li>
+        <li>The application owner texts a task (e.g. &quot;Buy groceries&quot;) to the registered number.</li>
         <li>The message is received by a private webhook and stored in a personal dashboard.</li>
         <li>No outbound messages are sent to any recipient.</li>
         <li>No third parties are messaged or opted in.</li>

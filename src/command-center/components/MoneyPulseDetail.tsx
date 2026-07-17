@@ -59,7 +59,7 @@ export function MoneyPulseDetail({ data }: { data: MoneyPulse }) {
         </div>
 
         <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 10 }}>
-          You're at <b style={{ color: "var(--amber)" }}>{pct}%</b> of the weekly budget with {pulse.daysLeft} days left.
+          You&apos;re at <b style={{ color: "var(--amber)" }}>{pct}%</b> of the weekly budget with {pulse.daysLeft} days left.
           {pulse.note ? " " + pulse.note : ""}
         </div>
 

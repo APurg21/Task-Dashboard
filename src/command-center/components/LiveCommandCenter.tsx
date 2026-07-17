@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTasks } from "@/lib/useTasks";
-import type { Task as BoardTask } from "@/lib/types";
+import { toMs, type Task as BoardTask } from "@/lib/types";
 import { commandCenterMock } from "../lib/mock";
 import type {
   CommandCenterData, Task as CCTask, LifePriority, LifeTag, Priority, BlindSpot,
@@ -31,16 +31,13 @@ function tagFor(title: string): LifeTag {
   return "mind";
 }
 
-// createdAt is stored inconsistently (ms from the server, ms*1000 from the
-// client hook); normalize before computing age.
 function ageDaysOf(createdAt: number): number {
-  const ms = createdAt > 1e14 ? createdAt / 1000 : createdAt;
-  return Math.max(0, (Date.now() - ms) / 86_400_000);
+  return Math.max(0, (Date.now() - toMs(createdAt)) / 86_400_000);
 }
 
 function byPriorityThenRecent(a: BoardTask, b: BoardTask): number {
   const r = (RANK[b.priority] ?? 0) - (RANK[a.priority] ?? 0);
-  return r !== 0 ? r : b.createdAt - a.createdAt;
+  return r !== 0 ? r : toMs(b.createdAt) - toMs(a.createdAt);
 }
 
 type Curated = { work: string[]; life: string[]; why: string };
@@ -90,10 +87,16 @@ export function LiveCommandCenter() {
       id: t.id, title: t.title, tag: tagFor(t.title), done: false, sub: subFor(t),
     }));
 
+    // The date is always computed — never the stale saved/mock label
+    // (the deployed header sat on "Wed · Jul 1" for weeks).
+    const now = new Date();
+    const dateLabel = `${now.toLocaleDateString("en-US", { weekday: "short" })} · ${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+
     return {
       ...base,
       daily: {
         ...base.daily,
+        dateLabel,
         topTasks: topTasks.length ? topTasks : base.daily.topTasks,
         lifePriorities: lifePriorities.length ? lifePriorities : base.daily.lifePriorities,
       },

@@ -7,7 +7,6 @@ import { splitBrainDump } from "@/lib/braindump";
 import { draftFollowUp } from "@/lib/draft";
 import { enqueuePendingNote } from "@/lib/obsidian";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { NOTE_TYPE_LABELS } from "@/lib/notes";
 import { planProject, planToTasks, planToNote } from "@/lib/planner";
 import { jobKey, runDeepPlan, type DeepPlanJob } from "@/lib/deepPlanner";
 import { getMode, setMode, telegramChat, clearTelegramChat } from "@/lib/tgchat";
@@ -28,7 +27,7 @@ const DIAG_KEY = "telegram:last";
 // That, plus the optional chat-id allowlist, is the security gate.
 function secretValid(req: NextRequest): boolean {
   const expected = process.env.TELEGRAM_SECRET_TOKEN;
-  if (!expected) return true; // not configured -> rely on allowlist below
+  if (!expected) return false; // fail closed — a missing env var must not open the webhook
   return req.headers.get("x-telegram-bot-api-secret-token") === expected;
 }
 
@@ -51,9 +50,11 @@ export async function POST(req: NextRequest) {
   const chatId = msg?.chat?.id;
   if (!text || chatId === undefined) return ok();
 
-  // Restrict to the configured chat. Unset -> accept any (rely on secret token).
+  // Restrict to the configured chat. The secret token already proves the update
+  // came from Telegram's servers; this allowlist proves it came from YOU. Keep
+  // /start and /id usable during setup so you can discover the id to configure.
   const allowed = process.env.TELEGRAM_CHAT_ID;
-  const fromOk = !allowed || String(chatId) === String(allowed);
+  const fromOk = Boolean(allowed) && String(chatId) === String(allowed);
 
   await kv.set(DIAG_KEY, { chatId, text, fromOk, at: Date.now() });
 

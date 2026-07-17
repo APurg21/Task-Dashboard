@@ -4,6 +4,13 @@ import type { NextRequest } from "next/server";
 // bot's webhook at /api/telegram. Uses the current host as the public base URL.
 
 export async function GET(req: NextRequest) {
+  // Gate on the webhook secret: an open setup route would let anyone re-register
+  // the webhook (dropping queued messages) at will.
+  const expected = process.env.TELEGRAM_SECRET_TOKEN;
+  if (!expected || req.headers.get("x-notify-key") !== expected) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     return Response.json(

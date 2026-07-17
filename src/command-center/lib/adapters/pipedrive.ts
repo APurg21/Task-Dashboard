@@ -10,21 +10,36 @@ import type { Deal, PipelineSummary, DealHeat } from "../types";
 const BASE = "https://api.pipedrive.com/v1";
 const TOKEN = process.env.PIPEDRIVE_API_TOKEN; // set in .env.local
 
-function heatFromDeal(d: any): DealHeat {
+// Raw Pipedrive deal fields we actually read; everything else is ignored.
+interface RawDeal {
+  id: number | string;
+  title?: string;
+  value?: number;
+  stage_id_name?: string;
+  stage?: string;
+  probability?: number;
+  last_activity_date?: string;
+  add_time?: string;
+  expected_close_date?: string;
+  person_name?: string;
+}
+
+function heatFromDeal(d: RawDeal): DealHeat {
   const idleDays = d.last_activity_date
     ? (Date.now() - new Date(d.last_activity_date).getTime()) / 8.64e7 : 0;
   if (idleDays > 7) return "stalled";
-  if (d.probability >= 70) return "hot";
-  if (d.probability >= 40) return "warm";
+  const prob = d.probability ?? 0;
+  if (prob >= 70) return "hot";
+  if (prob >= 40) return "warm";
   return "cold";
 }
 
 // Map a raw Pipedrive deal → our Deal type. This mapping layer is the
 // whole point: the UI only ever sees Deal, never Pipedrive's schema.
-function toDeal(d: any): Deal {
+function toDeal(d: RawDeal): Deal {
   return {
     id: String(d.id),
-    name: d.title,
+    name: d.title ?? "—",
     amount: d.value ?? 0,
     stage: d.stage_id_name ?? d.stage ?? "—",
     probability: (d.probability ?? 0) / 100,
@@ -42,8 +57,8 @@ export const pipedrive: PipedriveAdapter = {
   async getPipeline(): Promise<PipelineSummary> {
     if (!TOKEN) throw new Error("PIPEDRIVE_API_TOKEN missing");
     const res = await fetch(`${BASE}/deals?status=open&limit=100&api_token=${TOKEN}`, { cache: "no-store" });
-    const { data = [] } = await res.json();
-    const deals = data.map(toDeal);
+    const { data = [] } = (await res.json()) as { data?: RawDeal[] };
+    const deals = (data ?? []).map(toDeal);
     const projected = deals.reduce((s: number, d: Deal) => s + d.amount, 0);
     const weighted  = deals.reduce((s: number, d: Deal) => s + d.amount * d.probability, 0);
     const stalled   = deals.filter((d: Deal) => d.heat === "stalled");

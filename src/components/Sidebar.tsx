@@ -87,9 +87,12 @@ function ObsidianSync() {
       .catch(() => setPending(null));
   }, []);
 
+  // Badge refresh only — ObsidianAutoSync (mounted in the root layout) already
+  // polls AND flushes every 30s. A second flushing poller here raced it on the
+  // same Redis queue, which could double-write or drop notes.
   useEffect(() => {
     refresh();
-    const id = window.setInterval(refresh, 30000);
+    const id = window.setInterval(refresh, 60000);
     return () => window.clearInterval(id);
   }, [refresh]);
 

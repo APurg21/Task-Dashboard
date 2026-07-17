@@ -485,7 +485,7 @@ export function CommandSettings({
         </button>
 
         {/* 5 · MEETINGS ────────────────────────────────────────── */}
-        <div style={sectionStyle}>Today's Meetings</div>
+        <div style={sectionStyle}>Today&apos;s Meetings</div>
         {d.daily.meetings.map((m, i) => (
           <div key={m.id} style={rowStyle}>
             <div className="flex gap-2 items-start">

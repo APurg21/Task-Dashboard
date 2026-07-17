@@ -1,6 +1,6 @@
 import { kv } from "@/lib/redis";
 import type { NextRequest } from "next/server";
-import type { Task } from "@/lib/types";
+import { toMs, type Task } from "@/lib/types";
 import { sendTelegramMessage } from "@/lib/telegram";
 
 // Daily morning brief. A Vercel cron hits this once a day; it picks the few
@@ -12,25 +12,21 @@ const KEY = "tasks";
 const RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
 function ageDays(createdAt: number): number {
-  const ms = createdAt > 1e14 ? createdAt / 1000 : createdAt;
-  return Math.max(0, (Date.now() - ms) / 86_400_000);
+  return Math.max(0, (Date.now() - toMs(createdAt)) / 86_400_000);
 }
 
 function authed(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // not configured — allow (Vercel cron + manual)
-  const header = req.headers.get("authorization");
-  const key = req.nextUrl.searchParams.get("key");
-  return header === `Bearer ${secret}` || key === secret;
+  if (!secret) return false; // fail closed — set CRON_SECRET (Vercel sends it as Bearer)
+  return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
 async function buildAndSend(): Promise<{ ok: boolean; sent?: number; reason?: string }> {
-  // Prefer the configured chat; otherwise fall back to the last chat that texted
-  // the bot (recorded by the webhook) so the brief works with zero setup.
-  const last = await kv.get<{ chatId?: number | string }>("telegram:last");
-  const chatId = process.env.TELEGRAM_CHAT_ID || (last?.chatId != null ? String(last.chatId) : "");
+  // Only ever message the configured chat. (The old fallback to the last chat
+  // that texted the bot could brief a stranger with your task list.)
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
   if (!chatId) {
-    return { ok: false, reason: "No chat id — text your bot once (e.g. /id) so it knows who you are." };
+    return { ok: false, reason: "TELEGRAM_CHAT_ID is not set — text the bot /id and configure it." };
   }
 
   const tasks = (await kv.get<Task[]>(KEY)) ?? [];
@@ -47,7 +43,7 @@ async function buildAndSend(): Promise<{ ok: boolean; sent?: number; reason?: st
 
   const ranked = [...open].sort((a, b) => {
     const r = (RANK[b.priority] ?? 0) - (RANK[a.priority] ?? 0);
-    return r !== 0 ? r : b.createdAt - a.createdAt;
+    return r !== 0 ? r : toMs(b.createdAt) - toMs(a.createdAt);
   });
   const top = ranked.slice(0, 3);
 

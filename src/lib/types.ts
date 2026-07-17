@@ -73,6 +73,14 @@ export function statusLabel(status: Status): string {
   return STATUSES.find((s) => s.id === status)?.label ?? status;
 }
 
+// createdAt stamps exist in two scales: ms (server writes) and ~µs
+// (client/planner writes did Date.now()*1000). Normalize before ANY
+// comparison, age math, or sort — comparing mixed scales silently breaks
+// "done this week", stall detection, and recency ordering.
+export function toMs(createdAt: number): number {
+  return createdAt > 1e14 ? createdAt / 1000 : createdAt;
+}
+
 let counter = 0;
 export function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

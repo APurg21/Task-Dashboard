@@ -19,7 +19,7 @@ export default function Privacy() {
 
       <h2>How Data Is Used</h2>
       <p>
-        Message content is used solely to populate the owner's personal task
+        Message content is used solely to populate the owner&apos;s personal task
         dashboard. No data is shared with third parties, sold, or used for
         marketing purposes.
       </p>

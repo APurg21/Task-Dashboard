@@ -1,6 +1,6 @@
 import { kv } from "@/lib/redis";
 import type { NextRequest } from "next/server";
-import type { Task } from "@/lib/types";
+import { toMs, type Task } from "@/lib/types";
 import { sendTelegramMessage } from "@/lib/telegram";
 
 // Proactive nudge. A cron hits this during the day; it looks for things
@@ -11,22 +11,21 @@ import { sendTelegramMessage } from "@/lib/telegram";
 const KEY = "tasks";
 
 function ageDays(createdAt: number): number {
-  const ms = createdAt > 1e14 ? createdAt / 1000 : createdAt;
-  return Math.max(0, (Date.now() - ms) / 86_400_000);
+  return Math.max(0, (Date.now() - toMs(createdAt)) / 86_400_000);
 }
 
 function authed(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true;
-  return req.headers.get("authorization") === `Bearer ${secret}` || req.nextUrl.searchParams.get("key") === secret;
+  if (!secret) return false; // fail closed — set CRON_SECRET (Vercel sends it as Bearer)
+  return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
 interface Flag { task: Task; reason: string; weight: number }
 
 async function run(): Promise<{ ok: boolean; nudged?: number; reason?: string }> {
-  const last = await kv.get<{ chatId?: number | string }>("telegram:last");
-  const chatId = process.env.TELEGRAM_CHAT_ID || (last?.chatId != null ? String(last.chatId) : "");
-  if (!chatId) return { ok: false, reason: "no chat id" };
+  // Only ever message the configured chat — never a fallback stranger.
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  if (!chatId) return { ok: false, reason: "TELEGRAM_CHAT_ID is not set" };
 
   const now = Date.now();
   const tasks = (await kv.get<Task[]>(KEY)) ?? [];

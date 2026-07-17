@@ -84,8 +84,35 @@ async function ensureFtsIndex(db: ReturnType<typeof getDb>): Promise<void> {
   }
 }
 
-// Store a document and its chunks. Returns the number of chunks written (0 when
-// the KB is unavailable or there's nothing to store) — never throws to callers.
+// Remove every chunk (and parent document rows) previously stored for an
+// external sourceId. This is what makes re-syncing the same Obsidian note an
+// UPDATE instead of an ever-growing pile of duplicates.
+export async function deleteBySourceId(sourceId: string): Promise<number> {
+  if (!hasDb() || !sourceId) return 0;
+  try {
+    const db = getDb();
+    const docs = await db.execute(
+      sql`SELECT DISTINCT document_id AS id FROM document_chunks WHERE source_id = ${sourceId} AND document_id IS NOT NULL`
+    );
+    const deleted = await db.execute(
+      sql`DELETE FROM document_chunks WHERE source_id = ${sourceId} RETURNING id`
+    );
+    const docIds = (docs as unknown as { id: string }[]).map((d) => d.id);
+    if (docIds.length) {
+      const idList = sql.join(docIds.map((id) => sql`${id}::uuid`), sql`, `);
+      await db.execute(sql`DELETE FROM documents WHERE id IN (${idList})`);
+    }
+    return (deleted as unknown as unknown[]).length;
+  } catch (err) {
+    console.error("[knowledge] delete failed:", err);
+    return 0;
+  }
+}
+
+// Store a document and its chunks. When `sourceId` is set, existing chunks for
+// that source are replaced (upsert) so re-ingesting a note never duplicates it.
+// Returns the number of chunks written (0 when the KB is unavailable or there's
+// nothing to store) — never throws to callers.
 export async function ingestDocument(input: IngestInput): Promise<number> {
   if (!hasDb()) return 0;
   const content = (input.content || "").trim();
@@ -94,6 +121,8 @@ export async function ingestDocument(input: IngestInput): Promise<number> {
   try {
     const db = getDb();
     await ensureFtsIndex(db);
+
+    if (input.sourceId) await deleteBySourceId(input.sourceId);
 
     const [doc] = await db
       .insert(documents)

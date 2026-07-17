@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { parseImport } from "@/lib/parse";
 import { useTasks } from "@/lib/useTasks";
 import type { LifeContext } from "@/lib/types";
@@ -78,12 +79,12 @@ export default function TaskDashboard() {
             </span>
 
             <div className="ml-auto flex items-center gap-2">
-              <a
+              <Link
                 href="/"
                 className="rounded-lg border border-violet-500/40 px-3 py-1.5 text-sm font-medium text-violet-300 transition-colors hover:bg-violet-500/10"
               >
                 ⌘ Command Center
-              </a>
+              </Link>
               <input
                 type="search"
                 value={query}

@@ -53,10 +53,11 @@ export async function POST(req: NextRequest) {
 
   const sigValid = signatureValid(req, rawBody);
   const myPhone = process.env.TWILIO_MY_PHONE ?? "";
-  const fromOk = !myPhone || normalizePhone(from) === normalizePhone(myPhone);
-
-  // The phone allowlist is the real security gate; signature is logged for info.
-  const accepted = Boolean(text) && fromOk;
+  // Fail closed: no configured phone -> accept nothing. `From` is
+  // attacker-supplied form data, so the allowlist alone is spoofable — the
+  // Twilio signature is what proves the request really came from Twilio.
+  const fromOk = Boolean(myPhone) && normalizePhone(from) === normalizePhone(myPhone);
+  const accepted = Boolean(text) && fromOk && sigValid;
 
   if (accepted) {
     const tasks = (await kv.get<Task[]>(KEY)) ?? [];

@@ -2,14 +2,26 @@ import Redis from "ioredis";
 
 // Vercel's native Redis integration injects a TCP connection string as
 // REDIS_URL (rediss://...). Reuse a single client across invocations.
+// lazyConnect: the build (and any route that never touches Redis) must not
+// open a socket at import time — that's what spammed the build log with
+// unhandled AggregateErrors when REDIS_URL was unset locally.
 const globalForRedis = globalThis as unknown as { redis?: Redis };
 
-const client =
-  globalForRedis.redis ??
-  new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 3 });
+function createClient(): Redis {
+  const client = new Redis(process.env.REDIS_URL ?? "redis://127.0.0.1:6379", {
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+  });
+  // Without a listener, a connection failure is an unhandled error event that
+  // can crash the process instead of surfacing as a rejected command.
+  client.on("error", (err) => {
+    console.error("[redis]", err.message);
+  });
+  return client;
+}
 
-if (process.env.NODE_ENV !== "production") globalForRedis.redis = client;
-else globalForRedis.redis = client;
+const client = globalForRedis.redis ?? createClient();
+globalForRedis.redis = client;
 
 // Thin wrapper so callers can store/read JSON the same way @vercel/kv did.
 export const kv = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { Task } from "@/lib/types";
+import { toMs, type Task } from "@/lib/types";
 
 interface Props {
   tasks: Task[];
@@ -25,7 +25,7 @@ interface ProjectGroup {
 function groupProjects(tasks: Task[]): ProjectGroup[] {
   const withProject = tasks
     .filter((t) => t.project)
-    .sort((a, b) => a.createdAt - b.createdAt);
+    .sort((a, b) => toMs(a.createdAt) - toMs(b.createdAt));
 
   const byProject = new Map<string, Task[]>();
   for (const t of withProject) {
