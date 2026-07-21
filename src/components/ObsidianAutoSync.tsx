@@ -12,6 +12,12 @@ import { useEffect } from "react";
 // there's no point trying (and no error noise).
 
 const INTERVAL_MS = 30_000;
+// Vault → knowledge base ingest is incremental (hash-skips unchanged notes), so
+// an hourly cadence keeps AI Chat current without hammering Obsidian or the DB.
+const INGEST_INTERVAL_MS = 60 * 60_000;
+
+// Module-level so StrictMode's double-mounted effect instances share the guard.
+let ingestInFlight = false;
 
 export default function ObsidianAutoSync() {
   useEffect(() => {
@@ -31,11 +37,29 @@ export default function ObsidianAutoSync() {
       }
     }
 
+    async function ingestTick() {
+      // Guard against overlapping runs (React StrictMode double-mounts in dev,
+      // or a slow first sync outlasting the interval).
+      if (ingestInFlight) return;
+      ingestInFlight = true;
+      try {
+        // Reads the whole vault into the knowledge base; unchanged notes skip.
+        await fetch("/api/ingest/obsidian", { method: "POST" });
+      } catch {
+        // Obsidian closed — the next tick (or the manual button) catches up.
+      } finally {
+        ingestInFlight = false;
+      }
+    }
+
     tick(); // flush anything waiting on load
+    ingestTick(); // refresh the brain on load
     const id = window.setInterval(tick, INTERVAL_MS);
+    const ingestId = window.setInterval(ingestTick, INGEST_INTERVAL_MS);
     return () => {
       stopped = true;
       window.clearInterval(id);
+      window.clearInterval(ingestId);
     };
   }, []);
 

@@ -10,6 +10,30 @@ export function ObsidianKnowledge({ initial }: { initial?: NoteHit[] }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NoteHit[]>(initial ?? []);
   const [searching, setSearching] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+
+  async function syncVault() {
+    setSyncing(true);
+    setSyncMsg("reading vault…");
+    try {
+      const res = await fetch("/api/ingest/obsidian", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSyncMsg(data.error || "sync failed");
+        return;
+      }
+      const fails = data.failures?.length ? `, ${data.failures.length} failed` : "";
+      const gone = data.removed ? `, ${data.removed} removed` : "";
+      setSyncMsg(
+        `${data.ingested} updated, ${data.unchanged} unchanged${gone} → ${data.totalChunks} chunks total${fails}`
+      );
+    } catch {
+      setSyncMsg("couldn't reach the vault — is Obsidian running locally?");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function runSearch(q: string) {
     const term = q.trim();
@@ -85,6 +109,31 @@ export function ObsidianKnowledge({ initial }: { initial?: NoteHit[] }) {
             {c}
           </button>
         ))}
+      </div>
+
+      <div className="flex items-center gap-2" style={{ padding: "0 14px 10px" }}>
+        <button
+          onClick={syncVault}
+          disabled={syncing}
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "var(--uv)",
+            background: "rgba(10,4,24,.6)",
+            border: "1px solid var(--edge)",
+            borderRadius: 999,
+            padding: "6px 12px",
+            opacity: syncing ? 0.6 : 1,
+            cursor: syncing ? "default" : "pointer",
+          }}
+        >
+          {syncing ? "syncing…" : "⟳ Sync vault → brain"}
+        </button>
+        {syncMsg && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--faint)" }}>
+            {syncMsg}
+          </span>
+        )}
       </div>
 
       {searching && (

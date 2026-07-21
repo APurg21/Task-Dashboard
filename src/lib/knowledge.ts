@@ -198,6 +198,23 @@ export async function searchChunks(query: string, limit = 6): Promise<Retrieved[
   }
 }
 
+// Delete all chunks for a given source id (e.g. a vault path) so re-ingesting an
+// edited note replaces its chunks instead of duplicating them. No-op without a DB.
+export async function deleteChunksBySourceId(sourceId: string): Promise<void> {
+  if (!hasDb() || !sourceId) return;
+  try {
+    const db = getDb();
+    // Remove the parent documents too, so repeated re-syncs don't strand
+    // orphaned document rows (chunks carry the source_id; documents don't).
+    await db.execute(
+      sql`DELETE FROM documents WHERE id IN (SELECT document_id FROM document_chunks WHERE source_id = ${sourceId})`
+    );
+    await db.execute(sql`DELETE FROM document_chunks WHERE source_id = ${sourceId}`);
+  } catch (err) {
+    console.error("[knowledge] delete by source failed:", err);
+  }
+}
+
 // Count stored chunks — used to tell the UI whether the KB has anything yet.
 export async function chunkCount(): Promise<number> {
   if (!hasDb()) return 0;
