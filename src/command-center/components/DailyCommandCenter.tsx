@@ -4,7 +4,9 @@ import { Panel, Tag } from "./ui";
 import { ChiefOfStaffChat } from "./ChiefOfStaffChat";
 import type { DailyCommand, Task, LifePriority } from "../lib/types";
 
-function TaskRow({ t, onToggle }: { t: Task; onToggle?: (id: string, done: boolean) => void }) {
+// Shared task row — used by Top-3 here and by the full Work/Life lists
+// (TaskListPanel). `flag` is an optional extra badge (e.g. OVERDUE).
+export function TaskRow({ t, onToggle, flag }: { t: Task; onToggle?: (id: string, done: boolean) => void; flag?: React.ReactNode }) {
   const [done, setDone] = useState(!!t.done);
   const toggle = () => setDone(d => { const nd = !d; onToggle?.(t.id, nd); return nd; });
   return (
@@ -18,6 +20,7 @@ function TaskRow({ t, onToggle }: { t: Task; onToggle?: (id: string, done: boole
         <div style={{ fontSize: 13, lineHeight: 1.35, color: done ? "var(--faint)" : "var(--text)", textDecoration: done ? "line-through" : "none" }}>{t.title}</div>
         {t.sub && <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--faint)", marginTop: 3 }}>{t.sub}</div>}
       </div>
+      {flag}
       <Tag kind={t.priority}>{t.priority.toUpperCase()}</Tag>
     </div>
   );

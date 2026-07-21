@@ -9,6 +9,7 @@ import { VoiceToTask } from "./VoiceToTask";
 import { WhatAmIMissing } from "./WhatAmIMissing";
 import { SundayReset } from "./SundayReset";
 import { CommandSettings } from "./CommandSettings";
+import { TaskListPanel, type ListTask } from "./TaskListPanel";
 import type { BlindSpot } from "../lib/types";
 
 type ViewId = "today" | "work" | "life" | "travel" | "know";
@@ -39,6 +40,8 @@ const ACTIONS: { id: Exclude<ModalId, null>; label: string; cls: string; icon: R
 
 export function CommandCenter({
   data,
+  workList,
+  lifeList,
   onToggleTask,
   onSaveProfile,
   blindspots,
@@ -48,6 +51,10 @@ export function CommandCenter({
   onCapture,
 }: {
   data: CommandCenterData;
+  // Full open-task lists for the Work/Life tabs (live from Redis). When absent
+  // (mock-only usage), the tabs fall back to the ComingSoon placeholder.
+  workList?: ListTask[];
+  lifeList?: ListTask[];
   onToggleTask?: (id: string, done: boolean) => void;
   onSaveProfile?: (next: CommandCenterData) => Promise<void>;
   blindspots?: BlindSpot[];
@@ -135,19 +142,27 @@ export function CommandCenter({
 
             {view === "work" && (
               <section className="cc-view">
-                <ComingSoon
-                  title="Work · Sales"
-                  line="Your pipeline, follow-up radar, weekly story, and in-your-voice drafts live here — once you connect a real source (Pipedrive or a sales sheet). Until then it's a preview, kept out of your way."
-                />
+                {workList ? (
+                  <TaskListPanel title="All open · Work" accent="uv" tasks={workList} onToggle={onToggleTask} />
+                ) : (
+                  <ComingSoon
+                    title="Work · Sales"
+                    line="Your pipeline, follow-up radar, weekly story, and in-your-voice drafts live here — once you connect a real source (Pipedrive or a sales sheet). Until then it's a preview, kept out of your way."
+                  />
+                )}
               </section>
             )}
 
             {view === "life" && (
               <section className="cc-view">
-                <ComingSoon
-                  title="Life"
-                  line="Money & body pulses, clean-life checklist, and your self-improvement plan turn on when you connect your numbers (bank/health) or fill them in Edit. Hidden for now so the dashboard isn't showing you a made-up life."
-                />
+                {lifeList ? (
+                  <TaskListPanel title="All open · Life" accent="magenta" tasks={lifeList} onToggle={onToggleTask} />
+                ) : (
+                  <ComingSoon
+                    title="Life"
+                    line="Money & body pulses, clean-life checklist, and your self-improvement plan turn on when you connect your numbers (bank/health) or fill them in Edit. Hidden for now so the dashboard isn't showing you a made-up life."
+                  />
+                )}
               </section>
             )}
 

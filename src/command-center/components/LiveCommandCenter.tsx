@@ -7,6 +7,7 @@ import type {
   CommandCenterData, Task as CCTask, LifePriority, LifeTag, Priority, BlindSpot,
 } from "../lib/types";
 import { CommandCenter } from "./CommandCenter";
+import type { ListTask } from "./TaskListPanel";
 
 // Integration layer between the cockpit and the real systems:
 //  • Today's Top-3 Work / Life derive from live Redis tasks (write-back on check)
@@ -40,6 +41,31 @@ function byPriorityThenRecent(a: BoardTask, b: BoardTask): number {
   return r !== 0 ? r : toMs(b.createdAt) - toMs(a.createdAt);
 }
 
+// Full-list ordering: overdue first, then soonest due, dated before undated,
+// then the Top-3 ordering (priority, recency).
+function byUrgency(a: BoardTask, b: BoardTask): number {
+  const now = Date.now();
+  const ao = a.dueAt && a.dueAt < now ? 1 : 0;
+  const bo = b.dueAt && b.dueAt < now ? 1 : 0;
+  if (ao !== bo) return bo - ao;
+  if (a.dueAt && b.dueAt && a.dueAt !== b.dueAt) return a.dueAt - b.dueAt;
+  if (!!a.dueAt !== !!b.dueAt) return a.dueAt ? -1 : 1;
+  return byPriorityThenRecent(a, b);
+}
+
+// Row subtitle: supertag · due date · project (+ staleness on the full lists).
+function subFor(t: BoardTask, withAge = false): string | undefined {
+  const parts: string[] = [];
+  if (t.entityType && t.entityType !== "task") parts.push(t.entityType);
+  if (t.dueAt) parts.push("due " + new Date(t.dueAt).toISOString().slice(0, 10));
+  if (t.project) parts.push(t.project);
+  if (withAge) {
+    const age = Math.round(ageDaysOf(t.createdAt));
+    if (age > 7) parts.push(`${age}d old`);
+  }
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
 type Curated = { work: string[]; life: string[]; why: string };
 
 export function LiveCommandCenter() {
@@ -71,14 +97,6 @@ export function LiveCommandCenter() {
       return [...pool].sort(byPriorityThenRecent).slice(0, 3);
     };
 
-    const subFor = (t: BoardTask) => {
-      const parts: string[] = [];
-      if (t.entityType && t.entityType !== "task") parts.push(t.entityType);
-      if (t.dueAt) parts.push("due " + new Date(t.dueAt).toISOString().slice(0, 10));
-      if (t.project) parts.push(t.project);
-      return parts.length ? parts.join(" · ") : undefined;
-    };
-
     const topTasks: CCTask[] = pick(workOpen, curated?.work).map((t) => ({
       id: t.id, title: t.title, priority: toCCPriority(t.priority), done: false, source: t.source,
       sub: subFor(t),
@@ -102,6 +120,26 @@ export function LiveCommandCenter() {
       },
     };
   }, [base, openTasks, curated]);
+
+  // Full open-task lists for the Work / Life tabs — same pool, same check-off
+  // pipe as Top-3, just unabridged and urgency-sorted.
+  const toListTask = useCallback((t: BoardTask): ListTask => ({
+    id: t.id,
+    title: t.title,
+    priority: toCCPriority(t.priority),
+    done: false,
+    source: t.source,
+    sub: subFor(t, true),
+    overdue: !!t.dueAt && t.dueAt < Date.now(),
+  }), []);
+  const workList = useMemo(
+    () => openTasks.filter((t) => t.context === "work").sort(byUrgency).map(toListTask),
+    [openTasks, toListTask]
+  );
+  const lifeList = useMemo(
+    () => openTasks.filter((t) => t.context !== "work").sort(byUrgency).map(toListTask),
+    [openTasks, toListTask]
+  );
 
   // Real "What am I missing" from the live board.
   const blindspots: BlindSpot[] = useMemo(() => {
@@ -189,6 +227,8 @@ export function LiveCommandCenter() {
   return (
     <CommandCenter
       data={data}
+      workList={workList}
+      lifeList={lifeList}
       onToggleTask={onToggleTask}
       onSaveProfile={onSaveProfile}
       blindspots={blindspots}
