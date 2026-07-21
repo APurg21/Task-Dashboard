@@ -10,7 +10,6 @@ const PUBLIC_PAGES = ["/login", "/auth", "/opt-in", "/terms", "/privacy"];
 // one MUST fail closed on its own secret.
 const SELF_AUTHED_API = [
   "/api/telegram", // x-telegram-bot-api-secret-token (incl. /setup)
-  "/api/sms", // Twilio signature + phone allowlist
   "/api/brief", // CRON_SECRET
   "/api/nudge", // CRON_SECRET
   "/api/notify", // TELEGRAM_SECRET_TOKEN

@@ -6,7 +6,7 @@ import {
   ObsidianNotConfiguredError,
   ObsidianUnreachableError,
 } from "@/lib/obsidian";
-import { ingestDocument, deleteChunksBySourceId, chunkCount } from "@/lib/knowledge";
+import { ingestDocument, deleteBySourceId, chunkCount } from "@/lib/knowledge";
 import { kv } from "@/lib/redis";
 
 // Read the Obsidian vault into the knowledge base so AI Chat grounds answers in
@@ -59,13 +59,15 @@ export async function POST() {
         continue;
       }
 
-      await deleteChunksBySourceId(path);
+      // sourceId matches scripts/sync-vault.mjs keying (`vault:` + relative
+      // path) so either sync path upserts the same rows — never duplicates.
+      // ingestDocument replaces existing chunks for the sourceId itself.
       const n = await ingestDocument({
         title: path.split("/").pop()!.replace(/\.md$/, ""),
         content: body,
         sourceType: "obsidian",
         sourceName: path,
-        sourceId: path,
+        sourceId: `vault:${path}`,
         context,
         tags: tags.length ? tags : undefined,
       });
@@ -87,7 +89,7 @@ export async function POST() {
   let removed = 0;
   for (const oldPath of Object.keys(prev)) {
     if (!(oldPath in next)) {
-      await deleteChunksBySourceId(oldPath);
+      await deleteBySourceId(`vault:${oldPath}`);
       removed++;
     }
   }
