@@ -56,7 +56,7 @@ export function ChiefOfStaffChat({ ctx }: { ctx?: unknown }) {
       </div>
       <div className="flex gap-2 p-3" style={{ borderTop: "1px solid var(--edge)" }}>
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send(input)}
-          placeholder="Ask your chief of staff…" className="flex-1 rounded-xl"
+          placeholder="Ask anything — or task: / plan: / deepplan: to capture…" className="flex-1 rounded-xl"
           style={{ background: "rgba(10,4,24,.6)", border: "1px solid var(--edge)", padding: "10px 12px", color: "var(--text)", fontSize: 12.5 }} />
         <button onClick={() => send(input)} className="grid place-items-center rounded-xl"
           style={{ width: 40, border: 0, background: "linear-gradient(160deg,var(--violet),#5b54c9)", boxShadow: "var(--g-vi)" }} aria-label="Send">

@@ -1,16 +1,13 @@
 import { after } from "next/server";
 import { kv } from "@/lib/redis";
 import type { NextRequest } from "next/server";
-import { newId, type Task } from "@/lib/types";
+import type { Task } from "@/lib/types";
 import { MissingApiKeyError } from "@/lib/classify";
-import { splitBrainDump } from "@/lib/braindump";
 import { draftFollowUp } from "@/lib/draft";
-import { enqueuePendingNote } from "@/lib/obsidian";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { planProject, planToTasks, planToNote } from "@/lib/planner";
-import { jobKey, runDeepPlan, type DeepPlanJob } from "@/lib/deepPlanner";
+import { runDeepPlan } from "@/lib/deepPlanner";
+import { captureToBoard, quickPlanToBoard, queueDeepPlan } from "@/lib/commandRouter";
 import { getMode, setMode, telegramChat, clearTelegramChat } from "@/lib/tgchat";
-import { ingestDocument } from "@/lib/knowledge";
 import { answerQuestion } from "@/lib/chat";
 
 // Allow the deep planner to run in the background after the webhook responds.
@@ -132,16 +129,7 @@ export async function POST(req: NextRequest) {
       await sendTelegramMessage(chatId, "Tell me the project, e.g. `deepplan: launch a newsletter`.");
       return ok();
     }
-    const id = newId();
-    const job: DeepPlanJob = {
-      id,
-      idea,
-      status: "queued",
-      message: "Queued…",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await kv.set(jobKey(id), job);
+    const id = await queueDeepPlan(idea);
     after(async () => {
       await runDeepPlan(id, idea, chatId);
     });
@@ -157,18 +145,14 @@ export async function POST(req: NextRequest) {
       return ok();
     }
     try {
-      const plan = await planProject(idea);
-      const planned = planToTasks(plan, "telegram");
-      const existing = (await kv.get<Task[]>(KEY)) ?? [];
-      await kv.set(KEY, [...planned, ...existing]);
-      await enqueuePendingNote({ ...planToNote(plan), at: Date.now() });
+      const { plan, taskCount } = await quickPlanToBoard(idea, "telegram");
 
       const outline = plan.milestones
         .map((m, i) => `*${i + 1}. ${m.name}* (${m.tasks.length})`)
         .join("\n");
       await sendTelegramMessage(
         chatId,
-        `📋 *${plan.projectTitle}* — ${plan.milestones.length} milestones, ${planned.length} tasks\n\n${outline}\n\nOn your board and queued for Obsidian.`
+        `📋 *${plan.projectTitle}* — ${plan.milestones.length} milestones, ${taskCount} tasks\n\n${outline}\n\nOn your board and queued for Obsidian.`
       );
     } catch (err) {
       if (err instanceof MissingApiKeyError) {
@@ -277,58 +261,28 @@ export async function POST(req: NextRequest) {
   }
   const captureText = taskMatch ? taskMatch[1].trim() : text;
 
-  // Pass current active task titles as project context for matching.
-  const tasks = (await kv.get<Task[]>(KEY)) ?? [];
-  const projects = tasks.filter((t) => t.status !== "done").map((t) => t.title);
-
   // Brain dump: split one message into every distinct item and classify each,
-  // so a run-on becomes the right set of tasks instead of one blob.
+  // so a run-on becomes the right set of tasks instead of one blob. The shared
+  // pipeline (commandRouter) saves to the board, queues Obsidian notes, and
+  // ingests into the KB — same implementation the dashboard CoS box uses.
   let items;
   try {
-    items = await splitBrainDump(captureText, projects);
+    const outcome = await captureToBoard(captureText, "telegram");
+    if (outcome.fallbackTask) {
+      // Split failed; a plain task was saved so nothing is lost.
+      await sendTelegramMessage(chatId, `Added to your board: *${captureText}*`);
+      return ok();
+    }
+    items = outcome.items!;
   } catch (err) {
     if (err instanceof MissingApiKeyError) {
       await sendTelegramMessage(chatId, "⚠️ Classifier isn't configured (no ANTHROPIC_API_KEY).");
       return ok();
     }
-    // Fall back to a plain task so nothing is lost if the split fails.
-    const task: Task = {
-      id: newId(), title: captureText, status: "todo", priority: "medium",
-      createdAt: Date.now(), source: "telegram",
-    };
-    await kv.set(KEY, [task, ...tasks]);
-    await sendTelegramMessage(chatId, `Added to your board: *${captureText}*`);
-    return ok();
+    throw err;
   }
 
-  const now = Date.now();
   const single = items.length === 1;
-  const newTasks: Task[] = items.map((c, i) => ({
-    id: newId(),
-    title: c.title,
-    status: "todo",
-    priority: c.priority,
-    createdAt: now + (items.length - i), // preserve dump order (newest-first list)
-    context: c.context,
-    noteType: c.noteType,
-    source: "telegram",
-    entityType: c.entityType,
-    ...(Object.keys(c.fields).length ? { fields: c.fields } : {}),
-    ...(c.dueAt ? { dueAt: c.dueAt } : {}),
-    ...(c.matchedProject ? { project: c.matchedProject } : {}),
-  }));
-  await kv.set(KEY, [...newTasks, ...tasks]);
-
-  // Queue each note for Obsidian + file each in the knowledge base. For a single
-  // capture keep the full original text; for a split use the item's own content.
-  for (const c of items) {
-    const body = single ? captureText : [c.title, c.summary].filter(Boolean).join(" — ");
-    await enqueuePendingNote({ classification: c, text: body, at: Date.now() });
-    await ingestDocument({
-      title: c.title, content: body, sourceType: "telegram",
-      sourceName: c.title, context: c.context, tags: [c.entityType, ...c.tags],
-    });
-  }
 
   const tag = (c: (typeof items)[number]) =>
     `${c.entityType !== "task" ? c.entityType + " · " : ""}${c.context}/${c.priority}${c.dueAt ? " · due " + new Date(c.dueAt).toISOString().slice(0, 10) : ""}`;
